@@ -220,18 +220,18 @@ npm run dev
 
 Then open http://localhost:3000.
 
-| Script                             | What it does                                                          |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `npm run dev`                      | Start the dev server                                                  |
-| `npm run build`                    | Production build                                                      |
-| `npm run lint`                     | ESLint                                                                |
-| `npm run typecheck`                | Generate route types, then run `tsc`                                  |
-| `npm run format`                   | Format with Prettier                                                  |
-| `npm run format:check`             | Check formatting without writing                                      |
-| `npm test`                         | Run all tests once                                                    |
-| `npm run test:watch`               | Run tests in watch mode                                               |
-| `npm run generate:eval`            | Regenerate the typed eval dataset from `eval/*.csv`                   |
-| `npm run extract:n8n -- <exports>` | Re-extract n8n Code nodes and the output schema from workflow exports |
+| Script                             | What it does                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| `npm run dev`                      | Start the dev server                                                      |
+| `npm run build`                    | Production build                                                          |
+| `npm run lint`                     | ESLint                                                                    |
+| `npm run typecheck`                | Generate route types, then run `tsc`                                      |
+| `npm run format`                   | Format with Prettier                                                      |
+| `npm run format:check`             | Check formatting without writing                                          |
+| `npm test`                         | Run all tests once                                                        |
+| `npm run test:watch`               | Run tests in watch mode                                                   |
+| `npm run generate:data`            | Regenerate the typed datasets from `eval/*.csv` and `data/batch/*.csv`    |
+| `npm run extract:n8n -- <exports>` | Re-extract n8n Code nodes and the output schema from the workflow exports |
 
 No environment variables are required: `DATA_SOURCE` defaults to `mock`.
 Configuration lives in `.env.local`, created from the template:

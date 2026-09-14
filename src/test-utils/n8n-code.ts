@@ -7,6 +7,7 @@ export type N8nCodeNode =
   | "deterministic-matching-engine"
   | "apply-resolution-risk-policy"
   | "build-evaluation-transaction"
+  | "build-invoice-processing-input"
   | "normalize-eval-amendment-response";
 
 /**

@@ -9,12 +9,13 @@ Verbatim JavaScript from the workflows' Code nodes. The same inputs are run
 through the original node and the port, and the outputs must match (see
 `*.differential.test.ts`).
 
-| File                                   | n8n workflow            | Node                              | Ported to                                      |
-| -------------------------------------- | ----------------------- | --------------------------------- | ---------------------------------------------- |
-| `deterministic-matching-engine.js`     | AP Invoice processing   | Deterministic Matching engine     | `src/lib/domain/matching.ts`                   |
-| `apply-resolution-risk-policy.js`      | AP Invoice processing   | Apply Resolution Risk Policy      | `src/lib/domain/governance.ts`                 |
-| `build-evaluation-transaction.js`      | AP Invoice processing   | Build Evaluation Transaction      | `src/lib/eval/build-evaluation-transaction.ts` |
-| `normalize-eval-amendment-response.js` | TOOL - Get PO Amendment | Normalize Eval Amendment Response | `src/lib/eval/normalize-amendment-response.ts` |
+| File                                   | n8n workflow            | Node                              | Ported to                                         |
+| -------------------------------------- | ----------------------- | --------------------------------- | ------------------------------------------------- |
+| `deterministic-matching-engine.js`     | AP Invoice processing   | Deterministic Matching engine     | `src/lib/domain/matching.ts`                      |
+| `apply-resolution-risk-policy.js`      | AP Invoice processing   | Apply Resolution Risk Policy      | `src/lib/domain/governance.ts`                    |
+| `build-evaluation-transaction.js`      | AP Invoice processing   | Build Evaluation Transaction      | `src/lib/eval/build-evaluation-transaction.ts`    |
+| `build-invoice-processing-input.js`    | AP Batch Intake         | Build Invoice Processing Input    | `src/lib/batch/build-invoice-processing-input.ts` |
+| `normalize-eval-amendment-response.js` | TOOL - Get PO Amendment | Normalize Eval Amendment Response | `src/lib/eval/normalize-amendment-response.ts`    |
 
 These files are excluded from ESLint and Prettier so they stay byte-for-byte
 identical to the workflow. They are not valid standalone modules (n8n Code
@@ -40,5 +41,5 @@ any such identifier appears in an extracted file.
 To refresh after changing a node in n8n, export the workflows and run:
 
 ```bash
-npm run extract:n8n -- "AP Invoice processing.json" "TOOL - Get PO Amendment.json"
+npm run extract:n8n -- "AP Invoice processing.json" "TOOL - Get PO Amendment.json" "AP Batch Intake.json"
 ```

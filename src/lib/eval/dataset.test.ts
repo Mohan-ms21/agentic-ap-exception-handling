@@ -34,13 +34,13 @@ describe("parseCsv", () => {
 });
 
 describe("generated eval dataset", () => {
-  it("matches the dataset CSV (run `npm run generate:eval` if this fails)", () => {
+  it("matches the dataset CSV (run `npm run generate:data` if this fails)", () => {
     expect(evalDatasetRows).toEqual(
       readCsv("ap_price_variance_combined_eval_dataset_v4.csv"),
     );
   });
 
-  it("matches the fixtures CSV (run `npm run generate:eval` if this fails)", () => {
+  it("matches the fixtures CSV (run `npm run generate:data` if this fails)", () => {
     expect(evalFixtureRows).toEqual(
       readCsv("ap_price_variance_eval_fixtures_v4.csv"),
     );

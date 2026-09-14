@@ -21,6 +21,6 @@ All data is synthetic.
 
 ## Updating
 
-Replace a CSV, then run `npm run generate:eval` to regenerate
+Replace a CSV, then run `npm run generate:data` to regenerate
 `src/lib/eval/dataset.generated.ts`. The drift test in
 `src/lib/eval/dataset.test.ts` fails until the two agree.

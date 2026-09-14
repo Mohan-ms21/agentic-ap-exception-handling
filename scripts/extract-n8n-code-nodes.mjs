@@ -4,7 +4,7 @@
 // ports.
 //
 // Usage:
-//   npm run extract:n8n -- <AP Invoice processing.json> <TOOL - Get PO Amendment.json>
+//   npm run extract:n8n -- <AP Invoice processing.json> <TOOL - Get PO Amendment.json> <AP Batch Intake.json>
 //
 // Only node source and the output schema are written. Workflow
 // exports stay out of the repo: they contain credential names and IDs,
@@ -32,6 +32,11 @@ const NODES = [
     workflow: "AP Invoice processing",
     node: "Build Evaluation Transaction",
     file: "build-evaluation-transaction.js",
+  },
+  {
+    workflow: "AP Batch Intake",
+    node: "Build Invoice Processing Input",
+    file: "build-invoice-processing-input.js",
   },
   {
     workflow: "TOOL - Get PO Amendment",

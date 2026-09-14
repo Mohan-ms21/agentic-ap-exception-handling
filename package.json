@@ -12,8 +12,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate:eval": "node scripts/generate-eval-dataset.mjs && prettier --write src/lib/eval/dataset.generated.ts",
-    "extract:n8n": "node scripts/extract-n8n-code-nodes.mjs"
+    "extract:n8n": "node scripts/extract-n8n-code-nodes.mjs",
+    "generate:data": "node scripts/generate-datasets.mjs && prettier --write src/lib/eval/dataset.generated.ts src/lib/batch/batch-intake.generated.ts"
   },
   "dependencies": {
     "next": "16.3.5",
