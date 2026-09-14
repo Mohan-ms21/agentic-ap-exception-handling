@@ -30,6 +30,11 @@ const NODES = [
   },
   {
     workflow: "AP Invoice processing",
+    node: "Calculate Evaluation Metrics",
+    file: "calculate-evaluation-metrics.js",
+  },
+  {
+    workflow: "AP Invoice processing",
     node: "Build Evaluation Transaction",
     file: "build-evaluation-transaction.js",
   },

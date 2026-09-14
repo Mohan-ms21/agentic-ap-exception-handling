@@ -6,6 +6,7 @@ const CODE_NODE_DIR = join(__dirname, "../../n8n/code-nodes");
 export type N8nCodeNode =
   | "deterministic-matching-engine"
   | "apply-resolution-risk-policy"
+  | "calculate-evaluation-metrics"
   | "build-evaluation-transaction"
   | "build-invoice-processing-input"
   | "lookup-po-amendment"
