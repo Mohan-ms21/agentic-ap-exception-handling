@@ -75,10 +75,12 @@ backends directly comparable and keeps the UI stable while they change.
 
 ## Tech stack
 
-**Frontend (in progress)**
+**Frontend (in use)**
 
-- Next.js, React, TypeScript
-- Tailwind CSS
+- Next.js 16 (App Router), React 19, TypeScript
+- Tailwind CSS 4
+- ESLint and Prettier (with Tailwind class sorting)
+- Node.js 24 LTS
 
 **Backends (planned)**
 
@@ -87,12 +89,13 @@ backends directly comparable and keeps the UI stable while they change.
 
 ## Status
 
-**Active build.** This repository is at the scaffolding stage; the
-application code is not committed yet. Progress is tracked in the commit
-history, which follows [Conventional Commits](https://www.conventionalcommits.org/).
+**Active build.** The Next.js app is scaffolded with an app shell and
+an empty exception queue; it does not yet load any data or talk to a
+backend. Progress is tracked in the commit history, which follows
+[Conventional Commits](https://www.conventionalcommits.org/).
 
 - [x] Repository setup
-- [ ] Next.js + Tailwind scaffold
+- [x] Next.js + Tailwind scaffold
 - [ ] Mock data and exception queue UI
 - [ ] Price variance: detail view and proposal review
 - [ ] n8n webhook integration
@@ -106,12 +109,42 @@ No real company, vendor, or financial data is used or committed.
 
 ## Local setup
 
-_Setup instructions will be added once the app is scaffolded._ Runtime
-configuration lives in `.env.local`, created from the template:
+Requires Node.js 24 (see `.nvmrc`).
+
+```bash
+npm ci
+npm run dev
+```
+
+Then open http://localhost:3000.
+
+| Script                 | What it does                         |
+| ---------------------- | ------------------------------------ |
+| `npm run dev`          | Start the dev server                 |
+| `npm run build`        | Production build                     |
+| `npm run lint`         | ESLint                               |
+| `npm run typecheck`    | Generate route types, then run `tsc` |
+| `npm run format`       | Format with Prettier                 |
+| `npm run format:check` | Check formatting without writing     |
+
+No environment variables are needed yet. When backend integration
+lands, configuration will live in `.env.local`, created from the
+template:
 
 ```bash
 cp .env.example .env.local
 ```
+
+### Project structure
+
+```
+src/
+  app/          routes and root layout (App Router)
+  components/   UI components
+```
+
+`src/lib/` (domain types and the data-source adapter) arrives with the
+mock data milestone.
 
 ## License
 
