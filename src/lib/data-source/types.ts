@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  caseAgentDecision,
   exceptionCaseSchema,
   investigationPathSchema,
   type ExceptionCase,
@@ -92,8 +93,8 @@ export class DataSourceError extends Error {
 }
 
 export function toCaseSummary(exceptionCase: ExceptionCase): CaseSummary {
-  const { caseContext, agentDecision, governance, evaluationMeta } =
-    exceptionCase;
+  const { caseContext, governance, evaluationMeta } = exceptionCase;
+  const agentDecision = caseAgentDecision(exceptionCase);
   return {
     caseId: exceptionCase.caseId,
     invoiceId: caseContext.invoiceId,

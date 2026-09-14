@@ -1,3 +1,4 @@
+import { resolutionStep, type AgentStep } from "@/lib/domain/agent-steps";
 import {
   applyResolutionRiskPolicy,
   type Governance,
@@ -10,13 +11,15 @@ import {
   type EvaluationTransaction,
 } from "./build-evaluation-transaction";
 import { evalDatasetRows, evalFixtureRows } from "./dataset.generated";
-import { mockAgentDecision } from "./mock-agent";
+import { mockAgentStep } from "./mock-agent";
 import { normalizeEvalAmendmentResponse } from "./normalize-amendment-response";
 
 /** An eval dataset row run through the ported workflow, with the mock agent. */
 export type EvalCase = EvaluationTransaction & {
   matchingResult: MatchingResult;
   toolLookup: PoAmendmentLookup;
+  agentSteps: AgentStep[];
+  /** The resolution step's output, as n8n calls it. */
   agentDecision: AgentDecision;
   governance: Governance;
 };
@@ -38,11 +41,20 @@ export function runEvalCase(
       `Eval case ${row.testCaseId} references missing fixture ${row.fixtureKey}`,
     );
   }
-  const agentDecision = mockAgentDecision(evaluation);
+  const matchingResult = runMatching(evaluation.transaction);
+  const toolLookup = normalizeEvalAmendmentResponse(fixture);
+  const agentSteps = [
+    mockAgentStep(evaluation, toolLookup, {
+      startedAt: clock.receivedAt,
+      completedAt: clock.evaluatedAt,
+    }),
+  ];
+  const agentDecision = resolutionStep(agentSteps, "PRICE_VARIANCE").output;
   return {
     ...evaluation,
-    matchingResult: runMatching(evaluation.transaction),
-    toolLookup: normalizeEvalAmendmentResponse(fixture),
+    matchingResult,
+    toolLookup,
+    agentSteps,
     agentDecision,
     governance: applyResolutionRiskPolicy(agentDecision, clock.evaluatedAt),
   };

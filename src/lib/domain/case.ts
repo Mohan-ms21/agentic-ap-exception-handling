@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agentStepSchema, resolutionStep, type AgentStep } from "./agent-steps";
 import { auditRecordSchema, buildAuditRecord } from "./audit";
 import { evaluationExpectedSchema, evaluationMetaSchema } from "./evaluation";
 import { applyResolutionRiskPolicy, governanceSchema } from "./governance";
@@ -7,12 +8,7 @@ import {
   matchingResultSchema,
   runMatching,
 } from "./matching";
-import {
-  agentDecisionSchema,
-  poAmendmentLookupSchema,
-  type AgentDecision,
-  type PoAmendmentLookup,
-} from "./resolution";
+import type { AgentDecision } from "./resolution";
 import {
   dataQualityFlagSchema,
   humanReviewFlags,
@@ -58,9 +54,8 @@ export const exceptionCaseSchema = z.object({
   matchingResult: matchingResultSchema,
   caseContext: caseContextSchema,
   investigationPath: investigationPathSchema,
-  /** The PO amendment tool response the agent saw, when available. */
-  toolLookup: poAmendmentLookupSchema.nullable(),
-  agentDecision: agentDecisionSchema.nullable(),
+  /** Agent work in order; empty until the agent has reported. */
+  agentSteps: z.array(agentStepSchema),
   governance: governanceSchema.nullable(),
   humanReviewRequest: humanReviewRequestSchema.nullable(),
   humanReview: humanReviewSchema.nullable(),
@@ -128,8 +123,7 @@ export function openCase(
       exceptionType,
     },
     investigationPath: investigated ? "PRICE_VARIANCE_AGENT" : "NONE",
-    toolLookup: null,
-    agentDecision: null,
+    agentSteps: [],
     governance: null,
     humanReviewRequest: null,
     humanReview: null,
@@ -143,39 +137,49 @@ export function openCase(
 }
 
 /**
- * Records the agent's decision and applies the risk policy: automation goes
- * to "Approved for Automated Resolution" (and is audited), everything else
- * to "Prepare Human Review Case".
+ * Records the agent steps and applies the risk policy to the final
+ * (resolution) step's output: automation goes to "Approved for Automated
+ * Resolution" (and is audited), everything else to "Prepare Human Review
+ * Case".
  */
-export function applyAgentDecision(
+export function recordAgentSteps(
   current: ExceptionCase,
-  toolLookup: PoAmendmentLookup | null,
-  agentDecision: AgentDecision,
+  agentSteps: readonly AgentStep[],
   now: Date = new Date(),
 ): ExceptionCase {
   if (current.workflowStatus !== "UNDER_AGENT_INVESTIGATION") {
     throw new CaseTransitionError(
-      `Case ${current.caseId} is ${current.workflowStatus ?? "not investigated"}; an agent decision can only be recorded while under investigation.`,
+      `Case ${current.caseId} is ${current.workflowStatus ?? "not investigated"}; agent steps can only be recorded while under investigation.`,
     );
   }
-  const governance = applyResolutionRiskPolicy(agentDecision, now);
-  const withDecision = { ...current, toolLookup, agentDecision, governance };
+  const decision = resolutionStep(
+    agentSteps,
+    current.caseContext.exceptionType,
+  ).output;
+  const governance = applyResolutionRiskPolicy(decision, now);
+  const withSteps = { ...current, agentSteps: [...agentSteps], governance };
 
   if (governance.automationAllowed) {
     const workflowStatus = "READY_FOR_AUTOMATED_RESOLUTION" as const;
     const nextAction = "REMATCH_USING_AMENDED_PO";
     return {
-      ...withDecision,
+      ...withSteps,
       workflowStatus,
       nextAction,
       auditRecord: buildAuditRecord(
-        { ...withDecision, humanReview: null, workflowStatus, nextAction },
+        {
+          ...withSteps,
+          agentDecision: decision,
+          humanReview: null,
+          workflowStatus,
+          nextAction,
+        },
         now,
       ),
     };
   }
   return {
-    ...withDecision,
+    ...withSteps,
     workflowStatus: "WAITING_FOR_HUMAN_REVIEW",
     humanReviewRequest: {
       formUrl: null,
@@ -183,6 +187,20 @@ export function applyAgentDecision(
       status: "PENDING",
     },
   };
+}
+
+/**
+ * The resolution output of a case: what n8n calls `agentDecision`. Null until
+ * the agent has reported.
+ */
+export function caseAgentDecision(
+  exceptionCase: ExceptionCase,
+): AgentDecision | null {
+  if (exceptionCase.agentSteps.length === 0) return null;
+  return resolutionStep(
+    exceptionCase.agentSteps,
+    exceptionCase.caseContext.exceptionType,
+  ).output;
 }
 
 /**
@@ -195,10 +213,8 @@ export function applyHumanReview(
   humanReview: HumanReview,
   now: Date = new Date(),
 ): ExceptionCase {
-  if (
-    current.workflowStatus !== "WAITING_FOR_HUMAN_REVIEW" ||
-    !current.agentDecision
-  ) {
+  const agentDecision = caseAgentDecision(current);
+  if (current.workflowStatus !== "WAITING_FOR_HUMAN_REVIEW" || !agentDecision) {
     throw new CaseTransitionError(
       `Case ${current.caseId} is ${current.workflowStatus ?? "not investigated"}; only cases waiting for human review accept a decision.`,
     );
@@ -208,12 +224,15 @@ export function applyHumanReview(
     humanReview,
     dataQualityFlags: humanReviewFlags(humanReview),
   };
-  const outcome = routeHumanDecision(current.agentDecision, humanReview);
+  const outcome = routeHumanDecision(agentDecision, humanReview);
   if (!outcome) return withReview;
 
   return {
     ...withReview,
     ...outcome,
-    auditRecord: buildAuditRecord({ ...withReview, ...outcome }, now),
+    auditRecord: buildAuditRecord(
+      { ...withReview, ...outcome, agentDecision },
+      now,
+    ),
   };
 }

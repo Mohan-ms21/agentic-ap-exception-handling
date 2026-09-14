@@ -1,9 +1,9 @@
 import { z } from "zod";
 import {
-  applyAgentDecision,
   applyHumanReview,
   exceptionCaseSchema,
   openCase,
+  recordAgentSteps,
   type ExceptionCase,
 } from "@/lib/domain/case";
 import {
@@ -122,10 +122,9 @@ function seedCases(): ExceptionCase[] {
       },
       receivedAt,
     );
-    return applyAgentDecision(
+    return recordAgentSteps(
       opened,
-      evalCase.toolLookup,
-      evalCase.agentDecision,
+      evalCase.agentSteps,
       new Date(evalCase.governance.evaluatedAt),
     );
   });

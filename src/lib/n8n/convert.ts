@@ -6,12 +6,18 @@ import {
 } from "@/lib/domain/matching";
 import { majorToMinor, minorToMajor } from "@/lib/domain/money";
 import {
+  agentStepSchema,
+  PRICE_VARIANCE_AGENT,
+  type AgentStep,
+} from "@/lib/domain/agent-steps";
+import {
   humanReviewFlags,
   humanReviewSchema,
   type DataQualityFlag,
   type HumanReview,
 } from "@/lib/domain/review";
 import {
+  agentDecisionSchema,
   poAmendmentLookupSchema,
   type PoAmendmentLookup,
 } from "@/lib/domain/resolution";
@@ -303,4 +309,31 @@ export function humanReviewFromWire(input: unknown): {
     "human review",
   );
   return { humanReview, flags: humanReviewFlags(humanReview) };
+}
+
+/**
+ * n8n emits the price variance agent's result as a single `agentDecision`
+ * object and records neither tool calls nor timings. It maps to one agent
+ * step, with those fields null.
+ */
+export function agentStepsFromWire(agentDecision: unknown): AgentStep[] {
+  const output = parseOrThrow(
+    agentDecisionSchema,
+    agentDecision,
+    "n8n agentDecision",
+  );
+  return [
+    parseOrThrow(
+      agentStepSchema,
+      {
+        ...PRICE_VARIANCE_AGENT,
+        toolCalls: null,
+        startedAt: null,
+        completedAt: null,
+        outputSchemaId: "PRICE_VARIANCE_RESOLUTION",
+        output,
+      },
+      "agent step",
+    ),
+  ];
 }

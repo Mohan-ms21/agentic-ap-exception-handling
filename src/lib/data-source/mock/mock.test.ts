@@ -126,7 +126,7 @@ describe("seeded cases", () => {
         workflowStatus: null,
         evaluation: null,
       });
-      expect(detail.agentDecision).toBeNull();
+      expect(detail.agentSteps).toEqual([]);
     },
   );
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyAgentDecision,
   applyHumanReview,
+  caseAgentDecision,
   CaseTransitionError,
   exceptionCaseSchema,
   openCase,
+  recordAgentSteps,
   type OpenCaseInput,
 } from "./case";
+import { PRICE_VARIANCE_AGENT, type AgentStep } from "./agent-steps";
 import type { AgentDecision } from "./resolution";
 import type { HumanReview } from "./review";
 import type { Transaction } from "./transaction";
@@ -71,6 +73,15 @@ const pending: AgentDecision = {
   requiresHumanReview: true,
 };
 
+const step = (output: AgentDecision): AgentStep => ({
+  ...PRICE_VARIANCE_AGENT,
+  toolCalls: null,
+  startedAt: null,
+  completedAt: null,
+  outputSchemaId: "PRICE_VARIANCE_RESOLUTION",
+  output,
+});
+
 const review = (overrides: Partial<HumanReview>): HumanReview => ({
   decision: "ACCEPT_RECOMMENDATION",
   reviewer: "AP Analyst",
@@ -133,7 +144,7 @@ describe("openCase", () => {
         workflowStatus: null,
         caseContext: { exceptionType: type },
       });
-      expect(() => applyAgentDecision(opened, null, approved)).toThrow(
+      expect(() => recordAgentSteps(opened, [step(approved)])).toThrow(
         CaseTransitionError,
       );
     },
@@ -148,10 +159,10 @@ describe("openCase", () => {
   });
 });
 
-describe("applyAgentDecision", () => {
+describe("recordAgentSteps", () => {
   it("automates a safe decision, sets the rematch action and writes the audit record", () => {
     const now = at("2026-09-01T09:01:30.000Z");
-    const resolved = applyAgentDecision(openCase(input), null, approved, now);
+    const resolved = recordAgentSteps(openCase(input), [step(approved)], now);
     expect(resolved).toMatchObject({
       workflowStatus: "READY_FOR_AUTOMATED_RESOLUTION",
       nextAction: "REMATCH_USING_AMENDED_PO",
@@ -172,7 +183,7 @@ describe("applyAgentDecision", () => {
   });
 
   it("sends anything else to human review with a pending request and no audit yet", () => {
-    const waiting = applyAgentDecision(openCase(input), null, pending);
+    const waiting = recordAgentSteps(openCase(input), [step(pending)]);
     expect(waiting).toMatchObject({
       workflowStatus: "WAITING_FOR_HUMAN_REVIEW",
       nextAction: null,
@@ -182,15 +193,15 @@ describe("applyAgentDecision", () => {
   });
 
   it("refuses a second decision", () => {
-    const decided = applyAgentDecision(openCase(input), null, pending);
-    expect(() => applyAgentDecision(decided, null, approved)).toThrow(
+    const decided = recordAgentSteps(openCase(input), [step(pending)]);
+    expect(() => recordAgentSteps(decided, [step(approved)])).toThrow(
       CaseTransitionError,
     );
   });
 });
 
 describe("applyHumanReview", () => {
-  const waiting = () => applyAgentDecision(openCase(input), null, pending);
+  const waiting = () => recordAgentSteps(openCase(input), [step(pending)]);
 
   it("accept: completes review with the agent's action and audits it", () => {
     const done = applyHumanReview(waiting(), review({}));
@@ -239,9 +250,31 @@ describe("applyHumanReview", () => {
   });
 
   it("refuses a review on a case that is not waiting", () => {
-    const automated = applyAgentDecision(openCase(input), null, approved);
+    const automated = recordAgentSteps(openCase(input), [step(approved)]);
     expect(() => applyHumanReview(automated, review({}))).toThrow(
       CaseTransitionError,
     );
+  });
+});
+
+describe("agent steps on a case", () => {
+  it("renders as a sequence: governance evaluates the final resolution step", () => {
+    const recorded = recordAgentSteps(openCase(input), [step(pending)]);
+    expect(recorded.agentSteps).toHaveLength(1);
+    expect(caseAgentDecision(recorded)).toEqual(pending);
+    expect(recorded.governance?.governanceCategory).toBe(
+      "BUSINESS_REVIEW_REQUIRED",
+    );
+  });
+
+  it("refuses steps without a resolution step for the exception type", () => {
+    expect(() => recordAgentSteps(openCase(input), [])).toThrow(
+      /final agent step/,
+    );
+  });
+
+  it("writes the resolution output to the audit record as agentDecision, as n8n does", () => {
+    const automated = recordAgentSteps(openCase(input), [step(approved)]);
+    expect(automated.auditRecord?.agentDecision).toEqual(approved);
   });
 });

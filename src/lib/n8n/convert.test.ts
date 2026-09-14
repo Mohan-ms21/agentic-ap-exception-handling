@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runMatching } from "@/lib/domain/matching";
 import {
+  agentStepsFromWire,
   humanReviewFromWire,
   matchingResultFromWire,
   matchingResultToWire,
@@ -172,5 +173,35 @@ describe("humanReviewFromWire", () => {
     expect(() =>
       humanReviewFromWire({ decision: "ESCALATE", reviewedAt: "yesterday" }),
     ).toThrow(N8nBoundaryError);
+  });
+});
+
+describe("agentStepsFromWire", () => {
+  // Appendix A.2 of the solution documentation.
+  const agentDecision = {
+    rootCause: "NO_AMENDMENT_FOUND",
+    recommendedAction: "ROUTE_TO_BUYER",
+    riskLevel: "MEDIUM",
+    confidence: 1,
+    evidence: ["PO amendment lookup returned NOT_FOUND."],
+    requiresHumanReview: true,
+    explanation: "No approved amendment was found to explain the variance.",
+  };
+
+  it("maps n8n's agentDecision to a sequence of one step", () => {
+    const steps = agentStepsFromWire(agentDecision);
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({
+      agentName: "Price Variance Investigation Agent",
+      outputSchemaId: "PRICE_VARIANCE_RESOLUTION",
+      toolCalls: null,
+      output: agentDecision,
+    });
+  });
+
+  it("rejects output that breaks the structured output schema", () => {
+    expect(() => agentStepsFromWire({ ...agentDecision, extra: true })).toThrow(
+      N8nBoundaryError,
+    );
   });
 });

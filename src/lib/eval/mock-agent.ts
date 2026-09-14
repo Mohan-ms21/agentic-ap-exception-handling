@@ -1,7 +1,9 @@
 import {
-  agentDecisionSchema,
-  type AgentDecision,
-} from "@/lib/domain/resolution";
+  agentStepSchema,
+  PRICE_VARIANCE_AGENT,
+  type AgentStep,
+} from "@/lib/domain/agent-steps";
+import type { AgentDecision, PoAmendmentLookup } from "@/lib/domain/resolution";
 import type { EvaluationTransaction } from "./build-evaluation-transaction";
 
 // Stand-in for the n8n "Price Variance Investigation Agent" in the mock data
@@ -138,16 +140,24 @@ const NARRATIVES: Record<string, Narrative> = {
   },
 };
 
-export function mockAgentDecision(
+export type MockAgentTimes = { startedAt: Date; completedAt: Date };
+
+/**
+ * The mock agent's single step for an eval case: one Get PO Amendment call
+ * with the fixture response, and the dataset's expected decision as output.
+ */
+export function mockAgentStep(
   evaluation: EvaluationTransaction,
-): AgentDecision {
+  toolResponse: PoAmendmentLookup,
+  times: MockAgentTimes,
+): AgentStep {
   const { testCaseId } = evaluation.evaluationMeta;
   const narrative = NARRATIVES[testCaseId];
   if (!narrative) {
     throw new Error(`No mock agent narrative for eval case ${testCaseId}`);
   }
   const expected = evaluation.evaluationExpected;
-  return agentDecisionSchema.parse({
+  const output: AgentDecision = {
     rootCause: expected.rootCause,
     recommendedAction: expected.recommendedAction,
     riskLevel: expected.riskLevel,
@@ -155,5 +165,21 @@ export function mockAgentDecision(
     evidence: narrative.evidence,
     requiresHumanReview: expected.requiresHumanReview,
     explanation: narrative.explanation,
+  };
+  return agentStepSchema.parse({
+    ...PRICE_VARIANCE_AGENT,
+    toolCalls: [
+      {
+        toolName: "Get PO Amendment",
+        input: {
+          poNumber: evaluation.transaction.purchaseOrder?.poNumber ?? "",
+        },
+        response: toolResponse,
+      },
+    ],
+    startedAt: times.startedAt.toISOString(),
+    completedAt: times.completedAt.toISOString(),
+    outputSchemaId: "PRICE_VARIANCE_RESOLUTION",
+    output,
   });
 }
