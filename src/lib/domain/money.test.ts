@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   addMoney,
   formatMoney,
+  majorToMinor,
+  minorToMajor,
   minorUnitDigits,
   money,
   multiplyMoney,
@@ -51,5 +53,35 @@ describe("formatting", () => {
     expect(minorUnitDigits("JPY")).toBe(0);
     expect(formatMoney(money(192500, "USD"))).toBe("$1,925.00");
     expect(formatMoney(money(-960, "USD"))).toBe("-$9.60");
+  });
+});
+
+describe("majorToMinor", () => {
+  it("converts major-unit numbers to integer minor units", () => {
+    expect(majorToMinor(110, "USD")).toBe(11000);
+    expect(majorToMinor(-9.6, "USD")).toBe(-960);
+    expect(majorToMinor(1500, "JPY")).toBe(1500);
+  });
+
+  it("absorbs floating-point noise from the source value", () => {
+    expect(1.15 * 100).not.toBe(115);
+    expect(majorToMinor(1.15, "USD")).toBe(115);
+    expect(majorToMinor(0.1 + 0.2, "USD")).toBe(30);
+  });
+
+  it("rejects more precision than the currency allows instead of rounding", () => {
+    expect(() => majorToMinor(110.005, "USD")).toThrow(/more precision/);
+    expect(() => majorToMinor(1500.5, "JPY")).toThrow(/more precision/);
+  });
+
+  it("rejects non-finite values", () => {
+    expect(() => majorToMinor(Number.NaN, "USD")).toThrow(/finite/);
+    expect(() => majorToMinor(Infinity, "USD")).toThrow(/finite/);
+  });
+
+  it("round-trips through minorToMajor", () => {
+    for (const value of [0, 0.01, 1.02, 2.04, 19.38, 110, 1234567.89]) {
+      expect(minorToMajor(majorToMinor(value, "USD"), "USD")).toBe(value);
+    }
   });
 });

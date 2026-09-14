@@ -19,6 +19,40 @@ export function money(amountMinor: number, currency: CurrencyCode): Money {
   return { amountMinor, currency };
 }
 
+/**
+ * Converts a major-unit number from an external system (n8n sends
+ * `unitPrice: 110`) to integer minor units. Floating-point noise from the
+ * source is absorbed (1.15 * 100 = 114.99999999999999 becomes 115), but a
+ * value with more precision than the currency allows (110.005 USD) is
+ * rejected rather than silently rounded.
+ */
+export function majorToMinor(value: number, currency: CurrencyCode): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(
+      `${currency} amount must be a finite number: ${value}`,
+    );
+  }
+  const scaled = value * 10 ** minorUnitDigits(currency);
+  const amountMinor = Math.round(scaled);
+  if (
+    Math.abs(scaled - amountMinor) > 1e-6 ||
+    !Number.isSafeInteger(amountMinor)
+  ) {
+    throw new RangeError(
+      `${currency} amount has more precision than the currency allows: ${value}`,
+    );
+  }
+  return amountMinor;
+}
+
+/** Integer minor units back to a major-unit number (204 USD -> 2.04). */
+export function minorToMajor(
+  amountMinor: number,
+  currency: CurrencyCode,
+): number {
+  return amountMinor / 10 ** minorUnitDigits(currency);
+}
+
 export function zeroMoney(currency: CurrencyCode): Money {
   return money(0, currency);
 }
