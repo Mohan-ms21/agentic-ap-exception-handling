@@ -21,6 +21,7 @@ import {
   toInvoiceExecutionSummary,
   type ExceptionDataSource,
 } from "../types";
+import { modelRunFromDataset, selfTestRun } from "@/lib/eval/runs";
 import { demoAgentStep } from "./demo-agent";
 
 export type MockDataSourceOptions = {
@@ -75,6 +76,10 @@ export function createMockDataSource(
     async getCase(caseId) {
       const found = findCase(caseId);
       return found ? structuredClone(found) : null;
+    },
+
+    async getEvaluationRuns() {
+      return { modelRun: modelRunFromDataset(), selfTest: selfTestRun() };
     },
 
     async submitHumanReview(caseId, input) {

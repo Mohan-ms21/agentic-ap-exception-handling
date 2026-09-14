@@ -17,6 +17,7 @@ import {
   riskLevelSchema,
 } from "@/lib/domain/resolution";
 import type { HumanReviewSubmission } from "@/lib/domain/review";
+import type { EvaluationRun, ModelRunState } from "@/lib/eval/runs";
 import { workflowStatusSchema } from "@/lib/domain/workflow";
 
 // The contract every backend (mock, n8n, LangGraph) implements. The UI
@@ -71,7 +72,18 @@ export interface ExceptionDataSource {
     caseId: string,
     submission: HumanReviewSubmission,
   ): Promise<ExceptionCase>;
+
+  /**
+   * Evaluation results: the latest imported n8n model run, if any, and the
+   * scoring self-test, which must never be presented as a model result.
+   */
+  getEvaluationRuns(): Promise<EvaluationRuns>;
 }
+
+export type EvaluationRuns = {
+  modelRun: ModelRunState;
+  selfTest: EvaluationRun;
+};
 
 export type DataSourceErrorCode =
   "not_found" | "invalid_state" | "invalid_input";

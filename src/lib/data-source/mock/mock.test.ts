@@ -283,3 +283,14 @@ describe("submitHumanReview", () => {
     );
   });
 });
+
+describe("getEvaluationRuns", () => {
+  it("has no model run imported yet and a self-test labelled as such", async () => {
+    const { modelRun, selfTest } = await create().getEvaluationRuns();
+    expect(modelRun).toEqual({ status: "NOT_IMPORTED" });
+    expect(selfTest).toMatchObject({
+      kind: "SELF_TEST",
+      label: "Scoring pipeline self-test",
+    });
+  });
+});
