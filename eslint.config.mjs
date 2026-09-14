@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Verbatim n8n Code node sources; not standalone modules.
+    "n8n/code-nodes/**",
   ]),
 ]);
 

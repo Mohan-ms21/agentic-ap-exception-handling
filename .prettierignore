@@ -1,3 +1,5 @@
 package-lock.json
 LICENSE
 public/
+# Verbatim n8n Code node sources, kept byte-for-byte identical
+n8n/code-nodes/*.js
