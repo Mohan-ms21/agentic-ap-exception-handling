@@ -1,4 +1,7 @@
-import type { CurrencyCode, Money } from "./schemas";
+import type { CurrencyCode } from "./transaction";
+
+/** An amount in integer minor units with its currency. */
+export type Money = { amountMinor: number; currency: CurrencyCode };
 
 /** Number of minor-unit digits for a currency: 2 for USD, 0 for JPY. */
 export function minorUnitDigits(currency: CurrencyCode): number {
