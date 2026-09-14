@@ -1,0 +1,172 @@
+import { describe, expect, it } from "vitest";
+import {
+  applyResolutionRiskPolicy,
+  GOVERNANCE_REASONS,
+  type GovernanceCategory,
+} from "./governance";
+import {
+  recommendedActionSchema,
+  riskLevelSchema,
+  rootCauseSchema,
+  type AgentDecision,
+} from "./resolution";
+
+const safeDecision: AgentDecision = {
+  rootCause: "APPROVED_PO_AMENDMENT",
+  recommendedAction: "REMATCH_USING_AMENDED_PO",
+  riskLevel: "LOW",
+  confidence: 0.9,
+  evidence: ["Amendment AMD-EVAL-001 is APPROVED at 110 USD."],
+  requiresHumanReview: false,
+  explanation: "Approved amendment explains the variance.",
+};
+
+const categoryOf = (decision: AgentDecision) =>
+  applyResolutionRiskPolicy(decision).governanceCategory;
+
+describe("confidence threshold", () => {
+  it("allows automation at exactly 0.90", () => {
+    expect(
+      applyResolutionRiskPolicy({ ...safeDecision, confidence: 0.9 }),
+    ).toMatchObject({
+      automationAllowed: true,
+      governanceCategory: "SAFE_AUTOMATION",
+    });
+  });
+
+  it("blocks automation at 0.89 and routes to business review", () => {
+    expect(
+      applyResolutionRiskPolicy({ ...safeDecision, confidence: 0.89 }),
+    ).toMatchObject({
+      automationAllowed: false,
+      governanceCategory: "BUSINESS_REVIEW_REQUIRED",
+    });
+  });
+
+  it("is inclusive at 0.9 down to the adjacent floating-point values", () => {
+    const justBelow = 0.8999999999999999; // largest double below 0.9
+    const justAbove = 0.9000000000000001; // smallest double above 0.9
+    expect(justBelow).toBeLessThan(0.9);
+    expect(categoryOf({ ...safeDecision, confidence: justBelow })).toBe(
+      "BUSINESS_REVIEW_REQUIRED",
+    );
+    expect(categoryOf({ ...safeDecision, confidence: justAbove })).toBe(
+      "SAFE_AUTOMATION",
+    );
+    expect(categoryOf({ ...safeDecision, confidence: 1 })).toBe(
+      "SAFE_AUTOMATION",
+    );
+  });
+});
+
+describe("safe automation requires every criterion", () => {
+  it.each<[string, Partial<AgentDecision>]>([
+    [
+      "root cause is not APPROVED_PO_AMENDMENT",
+      { rootCause: "OTHER_SUPPORTED_CAUSE" },
+    ],
+    [
+      "action is not REMATCH_USING_AMENDED_PO",
+      { recommendedAction: "HUMAN_REVIEW" },
+    ],
+    ["risk is MEDIUM", { riskLevel: "MEDIUM" }],
+    ["risk is HIGH", { riskLevel: "HIGH" }],
+    ["confidence is below 0.90", { confidence: 0.5 }],
+    ["the agent asks for human review", { requiresHumanReview: true }],
+  ])("requires business review when %s", (_, change) => {
+    expect(
+      applyResolutionRiskPolicy({ ...safeDecision, ...change }),
+    ).toMatchObject({
+      automationAllowed: false,
+      governanceCategory: "BUSINESS_REVIEW_REQUIRED",
+    });
+  });
+});
+
+describe("technical exceptions", () => {
+  it.each(recommendedActionSchema.options)(
+    "blocks automation when the lookup failed, whatever the action (%s)",
+    (recommendedAction) => {
+      expect(
+        categoryOf({
+          ...safeDecision,
+          rootCause: "TOOL_LOOKUP_FAILED",
+          recommendedAction,
+        }),
+      ).toBe("TECHNICAL_EXCEPTION");
+    },
+  );
+
+  it.each(rootCauseSchema.options)(
+    "blocks automation when the action is RETRY_LOOKUP, whatever the root cause (%s)",
+    (rootCause) => {
+      expect(
+        categoryOf({
+          ...safeDecision,
+          rootCause,
+          recommendedAction: "RETRY_LOOKUP",
+        }),
+      ).toBe("TECHNICAL_EXCEPTION");
+    },
+  );
+});
+
+describe("policy invariants over every combination", () => {
+  const confidences = [0, 0.5, 0.89, 0.8999999999999999, 0.9, 0.95, 1];
+
+  it("assigns exactly one category, automating only when all five criteria hold", () => {
+    let count = 0;
+    for (const rootCause of rootCauseSchema.options)
+      for (const recommendedAction of recommendedActionSchema.options)
+        for (const riskLevel of riskLevelSchema.options)
+          for (const confidence of confidences)
+            for (const requiresHumanReview of [true, false]) {
+              const decision = {
+                ...safeDecision,
+                rootCause,
+                recommendedAction,
+                riskLevel,
+                confidence,
+                requiresHumanReview,
+              };
+              const governance = applyResolutionRiskPolicy(decision);
+              const allCriteria =
+                rootCause === "APPROVED_PO_AMENDMENT" &&
+                recommendedAction === "REMATCH_USING_AMENDED_PO" &&
+                riskLevel === "LOW" &&
+                confidence >= 0.9 &&
+                !requiresHumanReview;
+              const technical =
+                rootCause === "TOOL_LOOKUP_FAILED" ||
+                recommendedAction === "RETRY_LOOKUP";
+              const expected: GovernanceCategory = allCriteria
+                ? "SAFE_AUTOMATION"
+                : technical
+                  ? "TECHNICAL_EXCEPTION"
+                  : "BUSINESS_REVIEW_REQUIRED";
+
+              expect(governance.governanceCategory).toBe(expected);
+              expect(governance.automationAllowed).toBe(
+                expected === "SAFE_AUTOMATION",
+              );
+              expect(governance.governanceReason).toBe(
+                GOVERNANCE_REASONS[expected],
+              );
+              count++;
+            }
+    expect(count).toBe(6 * 4 * 3 * confidences.length * 2);
+  });
+});
+
+it("uses the n8n node's reason text and the supplied clock", () => {
+  const now = new Date("2026-09-01T09:02:00.000Z");
+  expect(
+    applyResolutionRiskPolicy({ ...safeDecision, riskLevel: "HIGH" }, now),
+  ).toEqual({
+    automationAllowed: false,
+    governanceCategory: "BUSINESS_REVIEW_REQUIRED",
+    governanceReason:
+      "One or more automation criteria were not satisfied; human review is required.",
+    evaluatedAt: "2026-09-01T09:02:00.000Z",
+  });
+});
