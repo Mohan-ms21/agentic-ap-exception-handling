@@ -27,14 +27,14 @@ For each exception, the system:
 
 ### Exception coverage
 
-| Exception type          | Status          |
-| ----------------------- | --------------- |
-| Price variance          | In scope — first type built end to end |
-| Quantity variance       | Planned         |
-| Missing / closed PO     | Planned         |
-| Duplicate suspicion     | Planned         |
-| Vendor master mismatch  | Planned         |
-| Tax discrepancy         | Planned         |
+| Exception type         | Status                                 |
+| ---------------------- | -------------------------------------- |
+| Price variance         | In scope — first type built end to end |
+| Quantity variance      | Planned                                |
+| Missing / closed PO    | Planned                                |
+| Duplicate suspicion    | Planned                                |
+| Vendor master mismatch | Planned                                |
+| Tax discrepancy        | Planned                                |
 
 Price variance is deliberately the only exception type being built for
 now. The others are scoped but not implemented.
@@ -76,10 +76,12 @@ backends directly comparable and keeps the UI stable while they change.
 ## Tech stack
 
 **Frontend (in progress)**
+
 - Next.js, React, TypeScript
 - Tailwind CSS
 
 **Backends (planned)**
+
 - n8n (webhook-triggered workflow)
 - LangGraph
 
