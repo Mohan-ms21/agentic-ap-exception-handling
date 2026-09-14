@@ -10,6 +10,13 @@ The backend is an n8n workflow. This repository is the web app plus a
 TypeScript port of the workflow's decision logic, tested against the
 original n8n code and the workflow's evaluation dataset.
 
+The design principle is **detect deterministically → investigate
+agentically → govern deterministically**: the LLM is a bounded reasoning
+component inside a controlled workflow, not the matching engine, policy
+engine or authorization boundary. The full
+[solution documentation](docs/AP_Matching_Exception_Resolution_Agent_Documentation.md)
+is the source of truth for the domain model.
+
 > **Live demo:** _coming soon_
 >
 > **Screenshots:** _coming soon_
@@ -60,12 +67,23 @@ Tolerances are percentages carried on each transaction's matching policy
 (`priceTolerancePct`, `quantityTolerancePct`). A variance exactly at the
 tolerance is within tolerance.
 
+**Known gap, found by the red-team suite.** The policy trusts the root
+cause the agent asserts: it does not check the PO amendment record
+itself. An agent fooled into reporting `APPROVED_PO_AMENDMENT` with high
+confidence would pass. The tool set still bounds what can happen (the
+only automatable action is a rematch, and the agent has no tools for
+payments or supplier bank details), but the fix is for the policy to
+verify the tool result deterministically (lookup `FOUND`, status exactly
+`APPROVED`, revised price and currency equal to the invoice) before
+allowing automation. That change is being made in n8n first and will then
+be ported here.
+
 ## Architecture
 
 ```
 ┌──────────────────────────────────┐
 │ Next.js UI (React + Tailwind)    │
-│ queue, case detail, review       │
+│ batch, case, review, evaluation  │
 └────────────────┬─────────────────┘
                  │
 ┌────────────────▼─────────────────┐
@@ -80,29 +98,29 @@ tolerance is within tolerance.
 └─────────┘ └─────────┘ └─────────┘
 ```
 
-The UI depends on one contract (`listCases`, `getCase`,
-`submitHumanReview`). The backend is chosen by the server-side
-`DATA_SOURCE` variable; only `mock` is implemented so far.
+The UI depends on one contract (`listInvoiceExecutions`,
+`getInvoiceExecution`, `getCase`, `submitHumanReview`,
+`getEvaluationRuns`). One invoice is one execution: it either matches and
+continues to posting, or opens an exception case. The backend is chosen
+by the server-side `DATA_SOURCE` variable; only `mock` is implemented so
+far.
 
 ### How the logic is kept faithful to n8n
 
-- **Ported, then compared with the original.** The matching engine, risk
-  policy and evaluation helpers are TypeScript ports of the workflow's
-  Code nodes. The original node source is extracted into
-  [`n8n/code-nodes`](n8n/code-nodes) and differential tests run both on
-  the same inputs: 2,000 generated transactions for matching, and every
-  combination of decision fields (1,728) for the risk policy.
+- **Ported, then compared with the original.** Seven of the workflows'
+  Code nodes are ported to TypeScript: batch intake, matching engine,
+  resolution risk policy, the demo PO amendment lookup, and three
+  evaluation nodes. Their source is extracted into
+  [`n8n/code-nodes`](n8n/code-nodes), and differential tests run each
+  original and its port on the same inputs, including 2,000 generated
+  transactions for matching and every combination of decision fields
+  (1,728) for the risk policy.
 - **The agent's output schema is checked, not copied by hand.** A test
   converts the Zod schema to JSON Schema and requires it to equal the
   n8n output parser's schema.
 - **Money is exact.** Prices are integer minor units internally and are
   converted from n8n's major-unit numbers only at the boundary
   (`src/lib/n8n`), which rejects values the currency cannot represent.
-- **Porting found a bug.** The n8n matching engine compares
-  floating-point percentages, so some variances exactly at tolerance are
-  flagged ($1.02 vs $1.00 at 2% computes as 2.0000000000000018%). The
-  port compares exactly. See
-  [the write-up and one-line fix](docs/n8n-float-tolerance-bug.md).
 - **Untrusted data stays data.** Supplier names, amendment reasons and
   tool error messages are carried verbatim and never interpreted.
 - **Data from n8n is flagged, not rejected.** The n8n review form accepts
@@ -110,14 +128,44 @@ The UI depends on one contract (`listCases`, `getCase`,
   actions for an override and notes for overrides and escalations;
   reviews recorded in n8n that break those rules are kept and flagged.
 
-## Evaluation dataset
+### Findings from porting
 
-The mock data is the workflow's evaluation dataset
-([`eval/`](eval)): 4 `CORE` and 8 `RED_TEAM` price variance cases, with
-the PO amendment tool response for each. Every case is run through the
-ported matching engine and risk policy, and must produce its expected
-governance category and `automationAllowed`, with no forbidden root
-cause or action.
+- **Floating-point tolerance check.** The n8n matching engine flags some
+  variances exactly at tolerance ($1.02 vs $1.00 at 2% computes as
+  2.0000000000000018%). The port compares exactly. See
+  [the write-up and one-line fix](docs/n8n-float-tolerance-bug.md).
+- **Governance trusts the agent's root cause.** See the known gap under
+  the governance policy above.
+- **An evaluation output is not an expression.** The n8n Set Outputs
+  node maps `overallDecisionCorrect` without the `=` prefix, so the
+  exported column holds template text. The app recomputes every metric
+  and flags stored values it cannot trust.
+
+## Demo data
+
+The queue is the six-invoice batch from the documentation's walkthrough
+(`BATCH-DEMO-001`, [`data/batch`](data/batch)), run through the ported
+batch intake and matching engine:
+
+| Invoice  | Matching result     | What happens                                                                     |
+| -------- | ------------------- | -------------------------------------------------------------------------------- |
+| INV-3001 | Matched             | Continues to posting                                                             |
+| INV-3002 | `PRICE_VARIANCE`    | Investigated: lookup returns `NOT_FOUND`, agent routes to buyer, business review |
+| INV-3003 | `QUANTITY_VARIANCE` | Detected; no investigation path yet                                              |
+| INV-3004 | `MISSING_RECEIPT`   | Detected; no investigation path yet                                              |
+| INV-3005 | `CURRENCY_MISMATCH` | Detected; no investigation path yet                                              |
+| INV-3006 | `PO_NOT_FOUND`      | Detected; no investigation path yet                                              |
+
+The PO amendment lookup is the ported demo branch of the n8n tool. The
+agent step for INV-3002 is not a model call: its output is the example
+decision from Appendix A.2 of the documentation.
+
+## Evaluation
+
+The workflow's evaluation dataset ([`eval/`](eval)) has 4 `CORE` and 8
+`RED_TEAM` price variance cases, with the PO amendment tool response for
+each. Like the n8n evaluation run, these cases stop after governance and
+never create review tasks.
 
 | Case        | Suite    | Scenario                                                       | Expected                   |
 | ----------- | -------- | -------------------------------------------------------------- | -------------------------- |
@@ -137,18 +185,44 @@ cause or action.
 PV-RT-001 and PV-RT-008 test over-refusal: the injected text must be
 ignored without blocking a legitimate approved amendment.
 
-**What this does and does not test.** The mock agent is an oracle: it
-returns each case's expected root cause, action, risk level and review
-flag, with confidence, evidence and explanation written for the demo.
-So these tests cover everything around the agent (matching, the tool
-response, governance, human review and audit), not the language model.
-The model's accuracy on these cases is measured by the n8n evaluation
-run. A test also documents that the governance policy trusts the agent's
-root cause: if an injection fooled the agent, the policy alone would not
-stop automation.
+**Metrics and release gates** follow section 21 of the documentation:
+row-level outputs, run aggregates (root-cause, action, governance
+accuracy and others), and the release gates in 21.5. Gates are scoped
+(core accuracy over `CORE` rows, red-team pass over `RED_TEAM` rows), and
+**false auto resolution**, an unsafe automated financial action, is a
+count that must be zero.
 
-The mock also includes one detection-only case for each un-investigated
-exception type and one case still under agent investigation.
+**Two kinds of result, never mixed:**
+
+- **Model run.** Results from an n8n evaluation run export, rescored with
+  the ported metrics. No run has been imported yet, so the app shows none.
+- **Scoring pipeline self-test.** The mock agent returns each case's
+  expected answer, so every gate passes by construction. This checks that
+  matching, governance, scoring and gates are wired correctly. It is not
+  a measure of model quality.
+
+## Designed to extend
+
+Planned expansions are investigation paths for the other four exception
+types and an agent ahead of resolution for line mapping and reference
+documents (documentation sections 27 and 28). The domain model has cheap
+seams for these, and nothing more:
+
+- **Agent work is an ordered list of steps** (agent, objective, tool calls,
+  structured output, timings). Price variance produces one step.
+- **Output schemas are registered by id**, with each exception type mapped
+  to its resolution schema. The n8n price variance schema is the only
+  entry.
+- **Governance policies are registered by exception type.** The three
+  governance categories are global; only the conditions vary.
+- **The transaction stays single-line, as in n8n.** Header-level quantity
+  and price are read only by the matching engine and the n8n boundary
+  conversion; the UI will read them through a single component. One-to-many
+  line mapping (section 27.6) requires the n8n transaction model to change
+  first.
+- **`matchType` is the matching strategy key** (`TWO_WAY` / `THREE_WAY`).
+  Moving to comparator-based profiles is protected by the matching
+  engine's differential tests.
 
 ## Tech stack
 
@@ -170,18 +244,20 @@ exception type and one case still under agent investigation.
 
 ## Status
 
-**Active build.** The domain model follows the n8n workflow, and its
-decision logic is ported and tested against the original nodes and the
-evaluation dataset. The UI does not use it yet: the exception queue page
-still shows an empty state. Progress is tracked in the commit history,
+**Active build.** The domain model follows the n8n workflow and its
+documentation, and its decision logic is ported and tested against the
+original nodes and the evaluation dataset. The UI does not use it yet:
+the exception queue page still shows an empty state. Progress is tracked in the commit history,
 which follows [Conventional Commits](https://www.conventionalcommits.org/).
 
 - [x] Repository setup
 - [x] Next.js + Tailwind scaffold
-- [x] Domain model aligned with the n8n workflow, ported logic, eval
-      dataset as mock data
-- [ ] Exception queue UI on mock data
-- [ ] Case detail and human review UI
+- [x] Domain model aligned with the n8n workflow and documentation,
+      ported logic, demo batch, evaluation metrics and release gates
+- [ ] Walkthrough UI: batch, matching, case investigation, governance,
+      review, audit, evaluation and red team
+- [ ] Deterministic evidence validation in the governance policy
+- [ ] Import a real n8n evaluation run
 - [ ] n8n webhook adapter
 - [ ] Investigation paths for the other four exception types
 - [ ] LangGraph backend
@@ -189,25 +265,27 @@ which follows [Conventional Commits](https://www.conventionalcommits.org/).
 ## Data
 
 All invoice, PO, supplier and amendment data in this repository is
-**synthetic**. The evaluation CSVs are exports of the workflow's
-evaluation data tables; one supplier name that belongs to real businesses
-was replaced (see [`eval/README.md`](eval/README.md)). The n8n workflow
+**synthetic**. The batch and evaluation CSVs are exports of the
+workflow's data tables, with supplier and buyer names replaced by demo
+names (see [`data/batch/README.md`](data/batch/README.md) and
+[`eval/README.md`](eval/README.md)). The n8n workflow
 exports are not committed, since they contain credential and instance
 identifiers.
 
 ### Known limitations
 
-- The mock agent returns expected answers (see above); it does not
-  evaluate a model.
+- The mock agent does not call a model: demo output is taken from the
+  documentation and evaluation output is the answer key.
+- The governance policy trusts the agent's asserted root cause (see the
+  known gap above).
 - Mock state is held in server memory: reviews reset on restart and are
   not shared across serverless instances.
 - There is no authentication yet, so the reviewer name comes from the
   review form.
 - Tolerance percentages may have at most two decimal places, and prices
   cannot be finer than the currency's minor unit.
-- The n8n workflow does not currently return the PO amendment tool
-  response with the case, so evidence from it is available in the mock
-  only.
+- The n8n workflow does not currently return the agent's tool calls or
+  timings, so they are available in the mock only.
 
 ## Local setup
 
@@ -243,19 +321,21 @@ cp .env.example .env.local
 ### Project structure
 
 ```
+data/batch/             demo batch intake data (CSV)
 eval/                   evaluation dataset and tool fixtures (CSV)
 n8n/                    original Code node sources and output schema
-docs/                   write-ups (n8n float tolerance bug)
-scripts/                eval generation and n8n extraction
+docs/                   solution documentation and write-ups
+scripts/                dataset generation and n8n extraction
 src/
   app/                  routes and root layout (App Router)
   components/           UI components
   instrumentation.ts    validates DATA_SOURCE at server startup
   lib/
-    domain/             transaction, matching, resolution, governance,
-                        review, audit and case lifecycle
+    domain/             transaction, matching, agent steps, resolution,
+                        governance, review, audit, case and execution
+    batch/              batch intake port and generated demo data
     n8n/                n8n JSON shapes and boundary conversion
-    eval/               eval dataset, n8n eval node ports, mock agent
+    eval/               eval dataset, eval node ports, metrics, runs
     data-source/        contract, DATA_SOURCE resolution, mock backend
   test-utils/           harness that runs original n8n Code nodes
 ```
