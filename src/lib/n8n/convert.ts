@@ -6,6 +6,12 @@ import {
 } from "@/lib/domain/matching";
 import { majorToMinor, minorToMajor } from "@/lib/domain/money";
 import {
+  humanReviewFlags,
+  humanReviewSchema,
+  type DataQualityFlag,
+  type HumanReview,
+} from "@/lib/domain/review";
+import {
   poAmendmentLookupSchema,
   type PoAmendmentLookup,
 } from "@/lib/domain/resolution";
@@ -16,6 +22,7 @@ import {
   type Transaction,
 } from "@/lib/domain/transaction";
 import {
+  wireHumanReviewSchema,
   wireMatchingResultSchema,
   wirePoAmendmentLookupSchema,
   wireProcessingContextSchema,
@@ -271,4 +278,29 @@ export function poAmendmentLookupToWire(
       revisedUnitPrice: minorToMajor(revisedUnitPriceMinor, amendment.currency),
     },
   };
+}
+
+/**
+ * Reviews recorded by n8n are never rejected for their content: n8n's form
+ * does not validate them, so unknown decisions or override actions and
+ * missing notes are returned as data-quality flags for the UI to surface.
+ * Only a structurally unusable record (e.g. no timestamp) raises an error.
+ */
+export function humanReviewFromWire(input: unknown): {
+  humanReview: HumanReview;
+  flags: DataQualityFlag[];
+} {
+  const wire = parseOrThrow(wireHumanReviewSchema, input, "n8n human review");
+  const humanReview = parseOrThrow(
+    humanReviewSchema,
+    {
+      decision: wire.decision ?? "",
+      reviewer: wire.reviewer ?? "",
+      notes: wire.notes ?? "",
+      overrideAction: wire.overrideAction ?? "",
+      reviewedAt: wire.reviewedAt,
+    },
+    "human review",
+  );
+  return { humanReview, flags: humanReviewFlags(humanReview) };
 }

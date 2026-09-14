@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runMatching } from "@/lib/domain/matching";
 import {
+  humanReviewFromWire,
   matchingResultFromWire,
   matchingResultToWire,
   N8nBoundaryError,
@@ -135,5 +136,41 @@ describe("matching result conversion", () => {
     expect(() =>
       matchingResultFromWire(asWire, { ...transaction, purchaseOrder: null }),
     ).toThrow(/without a PO/);
+  });
+});
+
+describe("humanReviewFromWire", () => {
+  it("accepts a free-text override action from the n8n form and flags it", () => {
+    const { humanReview, flags } = humanReviewFromWire({
+      decision: "OVERRIDE_RECOMMENDATION",
+      reviewer: "AP Analyst",
+      notes: "",
+      overrideAction: "Pay supplier",
+      reviewedAt: "2026-09-01T10:00:00.000+10:00",
+    });
+    expect(humanReview.overrideAction).toBe("Pay supplier");
+    expect(flags.map((f) => f.code)).toEqual([
+      "UNKNOWN_OVERRIDE_ACTION",
+      "MISSING_REVIEW_NOTES",
+    ]);
+  });
+
+  it("treats absent form fields as empty strings", () => {
+    const { humanReview, flags } = humanReviewFromWire({
+      decision: "ACCEPT_RECOMMENDATION",
+      reviewedAt: "2026-09-01T00:00:00.000Z",
+    });
+    expect(humanReview).toMatchObject({
+      reviewer: "",
+      notes: "",
+      overrideAction: "",
+    });
+    expect(flags).toEqual([]);
+  });
+
+  it("rejects a record without a valid timestamp", () => {
+    expect(() =>
+      humanReviewFromWire({ decision: "ESCALATE", reviewedAt: "yesterday" }),
+    ).toThrow(N8nBoundaryError);
   });
 });

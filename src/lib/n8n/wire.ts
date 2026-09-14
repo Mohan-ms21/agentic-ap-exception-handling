@@ -134,3 +134,14 @@ export const wirePoAmendmentLookupSchema = z.discriminatedUnion(
 );
 
 export type WirePoAmendmentLookup = z.infer<typeof wirePoAmendmentLookupSchema>;
+
+/** As recorded by n8n's "Record Human Review" node; form fields may be absent. */
+export const wireHumanReviewSchema = z.object({
+  decision: z.string().optional(),
+  reviewer: z.string().optional(),
+  notes: z.string().optional(),
+  overrideAction: z.string().optional(),
+  reviewedAt: z.string(),
+});
+
+export type WireHumanReview = z.infer<typeof wireHumanReviewSchema>;
