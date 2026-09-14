@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "properties": {
+    "rootCause": {
+      "type": "string",
+      "enum": [
+        "APPROVED_PO_AMENDMENT",
+        "UNAPPROVED_PO_AMENDMENT",
+        "NO_AMENDMENT_FOUND",
+        "INSUFFICIENT_EVIDENCE",
+        "TOOL_LOOKUP_FAILED",
+        "OTHER_SUPPORTED_CAUSE"
+      ]
+    },
+    "recommendedAction": {
+      "type": "string",
+      "enum": [
+        "REMATCH_USING_AMENDED_PO",
+        "ROUTE_TO_BUYER",
+        "RETRY_LOOKUP",
+        "HUMAN_REVIEW"
+      ]
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiresHumanReview": {
+      "type": "boolean"
+    },
+    "explanation": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "rootCause",
+    "recommendedAction",
+    "riskLevel",
+    "confidence",
+    "evidence",
+    "requiresHumanReview",
+    "explanation"
+  ],
+  "additionalProperties": false
+}

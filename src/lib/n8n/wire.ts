@@ -100,3 +100,37 @@ export const wireMatchingResultSchema = z.object({
 
 export type WireMatchingException = z.infer<typeof wireMatchingExceptionSchema>;
 export type WireMatchingResult = z.infer<typeof wireMatchingResultSchema>;
+
+export const wirePoAmendmentLookupSchema = z.discriminatedUnion(
+  "lookupStatus",
+  [
+    z.object({
+      lookupStatus: z.literal("FOUND"),
+      poNumber: z.string(),
+      amendment: z.object({
+        amendmentId: z.string(),
+        poNumber: z.string(),
+        status: z.string(),
+        previousUnitPrice: z.number(),
+        revisedUnitPrice: z.number(),
+        currency: z.string(),
+        approvedBy: z.string().nullable().optional(),
+        approvalDate: z.string().nullable().optional(),
+        reason: z.string(),
+      }),
+    }),
+    z.object({
+      lookupStatus: z.literal("NOT_FOUND"),
+      poNumber: z.string(),
+      amendment: z.null(),
+    }),
+    z.object({
+      lookupStatus: z.literal("LOOKUP_FAILED"),
+      poNumber: z.string(),
+      amendment: z.null(),
+      error: z.object({ code: z.string(), message: z.string() }),
+    }),
+  ],
+);
+
+export type WirePoAmendmentLookup = z.infer<typeof wirePoAmendmentLookupSchema>;

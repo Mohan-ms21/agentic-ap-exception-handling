@@ -1,10 +1,12 @@
-// Extracts the jsCode of selected n8n Code nodes from workflow exports into
-// n8n/code-nodes/, for differential tests against the TypeScript ports.
+// Extracts the jsCode of selected n8n Code nodes (into n8n/code-nodes/) and
+// the JSON Schema of the agent's structured output parser (into
+// n8n/schemas/) from workflow exports, for tests against the TypeScript
+// ports.
 //
 // Usage:
 //   npm run extract:n8n -- <AP Invoice processing.json> <TOOL - Get PO Amendment.json>
 //
-// Only the JavaScript source of each listed node is written. Workflow
+// Only node source and the output schema are written. Workflow
 // exports stay out of the repo: they contain credential names and IDs,
 // instance, project, workflow and data-table identifiers. As a safeguard,
 // extraction fails if any such identifier appears in the extracted code.
@@ -71,6 +73,25 @@ function collectIdentifiers(value, found = new Set()) {
   return found;
 }
 
+const SCHEMAS = [
+  {
+    workflow: "AP Invoice processing",
+    node: "Exception Resolution Output Schema",
+    file: "exception-resolution-output-schema.json",
+  },
+];
+
+function assertNoIdentifiers(text, workflow, label) {
+  const leaked = [...collectIdentifiers(workflow)].filter((id) =>
+    text.includes(id),
+  );
+  if (leaked.length > 0) {
+    throw new Error(
+      `"${label}" contains workflow identifiers: ${leaked.join(", ")}`,
+    );
+  }
+}
+
 const exports = process.argv
   .slice(2)
   .map((path) => JSON.parse(readFileSync(path, "utf8")));
@@ -89,14 +110,7 @@ for (const spec of NODES) {
     throw new Error(`Code node "${spec.node}" not found in "${spec.workflow}"`);
   }
 
-  const leaked = [...collectIdentifiers(workflow)].filter((id) =>
-    code.includes(id),
-  );
-  if (leaked.length > 0) {
-    throw new Error(
-      `"${spec.node}" contains workflow identifiers: ${leaked.join(", ")}`,
-    );
-  }
+  assertNoIdentifiers(code, workflow, spec.node);
 
   const header =
     `// Extracted verbatim from the n8n Code node "${spec.node}"\n` +
@@ -104,4 +118,22 @@ for (const spec of NODES) {
     `// Do not edit: re-run the extraction instead.\n\n`;
   writeFileSync(join(root, "n8n/code-nodes", spec.file), header + code + "\n");
   console.log(`Wrote n8n/code-nodes/${spec.file}`);
+}
+
+for (const spec of SCHEMAS) {
+  const workflow = exports.find((w) => w.name === spec.workflow);
+  if (!workflow)
+    throw new Error(`Workflow "${spec.workflow}" not among the inputs`);
+  const node = workflow.nodes.find((n) => n.name === spec.node);
+  const schema = node?.parameters?.inputSchema;
+  if (typeof schema !== "string") {
+    throw new Error(
+      `Output parser "${spec.node}" not found in "${spec.workflow}"`,
+    );
+  }
+  assertNoIdentifiers(schema, workflow, spec.node);
+  // Re-serialize so the file is stable JSON; the content is unchanged.
+  const json = JSON.stringify(JSON.parse(schema), null, 2);
+  writeFileSync(join(root, "n8n/schemas", spec.file), json + "\n");
+  console.log(`Wrote n8n/schemas/${spec.file}`);
 }

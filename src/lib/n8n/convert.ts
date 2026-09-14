@@ -6,6 +6,10 @@ import {
 } from "@/lib/domain/matching";
 import { majorToMinor, minorToMajor } from "@/lib/domain/money";
 import {
+  poAmendmentLookupSchema,
+  type PoAmendmentLookup,
+} from "@/lib/domain/resolution";
+import {
   processingContextSchema,
   transactionSchema,
   type ProcessingContext,
@@ -13,10 +17,12 @@ import {
 } from "@/lib/domain/transaction";
 import {
   wireMatchingResultSchema,
+  wirePoAmendmentLookupSchema,
   wireProcessingContextSchema,
   wireTransactionSchema,
   type WireMatchingException,
   type WireMatchingResult,
+  type WirePoAmendmentLookup,
   type WireProcessingContext,
   type WireTransaction,
 } from "./wire";
@@ -213,5 +219,56 @@ function matchingExceptionToWire(
     variancePct: rest.variancePct,
     tolerancePct: rest.tolerancePct,
     message: rest.message,
+  };
+}
+
+export function poAmendmentLookupFromWire(input: unknown): PoAmendmentLookup {
+  const wire = parseOrThrow(
+    wirePoAmendmentLookupSchema,
+    input,
+    "n8n PO amendment lookup",
+  );
+  if (wire.lookupStatus !== "FOUND") {
+    return parseOrThrow(poAmendmentLookupSchema, wire, "PO amendment lookup");
+  }
+  const { previousUnitPrice, revisedUnitPrice, ...amendment } = wire.amendment;
+  return parseOrThrow(
+    poAmendmentLookupSchema,
+    {
+      ...wire,
+      amendment: {
+        ...amendment,
+        previousUnitPriceMinor: toMinor(
+          previousUnitPrice,
+          amendment.currency,
+          "amendment.previousUnitPrice",
+        ),
+        revisedUnitPriceMinor: toMinor(
+          revisedUnitPrice,
+          amendment.currency,
+          "amendment.revisedUnitPrice",
+        ),
+      },
+    },
+    "PO amendment lookup",
+  );
+}
+
+export function poAmendmentLookupToWire(
+  lookup: PoAmendmentLookup,
+): WirePoAmendmentLookup {
+  if (lookup.lookupStatus !== "FOUND") return structuredClone(lookup);
+  const { previousUnitPriceMinor, revisedUnitPriceMinor, ...amendment } =
+    lookup.amendment;
+  return {
+    ...lookup,
+    amendment: {
+      ...amendment,
+      previousUnitPrice: minorToMajor(
+        previousUnitPriceMinor,
+        amendment.currency,
+      ),
+      revisedUnitPrice: minorToMajor(revisedUnitPriceMinor, amendment.currency),
+    },
   };
 }
