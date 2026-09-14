@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { runMatching } from "@/lib/domain/matching";
 import {
+  matchingResultFromWire,
+  matchingResultToWire,
   N8nBoundaryError,
   processingContextFromWire,
   transactionFromWire,
@@ -111,5 +114,26 @@ describe("processingContextFromWire", () => {
         receivedAt: "2026-09-01T09:00:00.000Z",
       }).receivedAt,
     ).toBe("2026-09-01T09:00:00.000Z");
+  });
+});
+
+describe("matching result conversion", () => {
+  it("round-trips a price variance through n8n's major-unit JSON", () => {
+    const transaction = transactionFromWire(wire);
+    const result = runMatching(transaction);
+    const asWire = matchingResultToWire(result, transaction);
+    expect(asWire.exceptions[0]).toMatchObject({
+      invoiceUnitPrice: 110,
+      poUnitPrice: 100,
+    });
+    expect(matchingResultFromWire(asWire, transaction)).toEqual(result);
+  });
+
+  it("rejects a price variance reported without a PO", () => {
+    const transaction = transactionFromWire(wire);
+    const asWire = matchingResultToWire(runMatching(transaction), transaction);
+    expect(() =>
+      matchingResultFromWire(asWire, { ...transaction, purchaseOrder: null }),
+    ).toThrow(/without a PO/);
   });
 });

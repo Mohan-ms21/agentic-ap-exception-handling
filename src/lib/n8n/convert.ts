@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  matchingResultSchema,
+  type MatchingException,
+  type MatchingResult,
+} from "@/lib/domain/matching";
 import { majorToMinor, minorToMajor } from "@/lib/domain/money";
 import {
   processingContextSchema,
@@ -7,8 +12,11 @@ import {
   type Transaction,
 } from "@/lib/domain/transaction";
 import {
+  wireMatchingResultSchema,
   wireProcessingContextSchema,
   wireTransactionSchema,
+  type WireMatchingException,
+  type WireMatchingResult,
   type WireProcessingContext,
   type WireTransaction,
 } from "./wire";
@@ -128,4 +136,82 @@ export function processingContextToWire(
   context: ProcessingContext,
 ): WireProcessingContext {
   return { ...context };
+}
+
+/**
+ * Matching results carry prices; converting them needs the invoice and PO
+ * currencies from the transaction they were computed for.
+ */
+export function matchingResultFromWire(
+  input: unknown,
+  transaction: Transaction,
+): MatchingResult {
+  const wire = parseOrThrow(
+    wireMatchingResultSchema,
+    input,
+    "n8n matching result",
+  );
+  const exceptions = wire.exceptions.map((exception) => {
+    if (exception.type !== "PRICE_VARIANCE") return exception;
+    const { invoiceUnitPrice, poUnitPrice, ...rest } = exception;
+    const poCurrency = transaction.purchaseOrder?.currency;
+    if (!poCurrency) {
+      throw new N8nBoundaryError(
+        "PRICE_VARIANCE reported for a transaction without a PO",
+      );
+    }
+    return {
+      ...rest,
+      invoiceUnitPriceMinor: toMinor(
+        invoiceUnitPrice,
+        transaction.invoice.currency,
+        "PRICE_VARIANCE.invoiceUnitPrice",
+      ),
+      poUnitPriceMinor: toMinor(
+        poUnitPrice,
+        poCurrency,
+        "PRICE_VARIANCE.poUnitPrice",
+      ),
+    };
+  });
+  return parseOrThrow(
+    matchingResultSchema,
+    { ...wire, exceptions },
+    "matching result",
+  );
+}
+
+export function matchingResultToWire(
+  result: MatchingResult,
+  transaction: Transaction,
+): WireMatchingResult {
+  return {
+    ...result,
+    exceptions: result.exceptions.map((exception) =>
+      matchingExceptionToWire(exception, transaction),
+    ),
+  };
+}
+
+function matchingExceptionToWire(
+  exception: MatchingException,
+  transaction: Transaction,
+): WireMatchingException {
+  if (exception.type !== "PRICE_VARIANCE") return { ...exception };
+  const { invoiceUnitPriceMinor, poUnitPriceMinor, ...rest } = exception;
+  const poCurrency =
+    transaction.purchaseOrder?.currency ?? transaction.invoice.currency;
+  // Key order matches the n8n node's output.
+  return {
+    type: rest.type,
+    severity: rest.severity,
+    invoiceUnitPrice: minorToMajor(
+      invoiceUnitPriceMinor,
+      transaction.invoice.currency,
+    ),
+    poUnitPrice: minorToMajor(poUnitPriceMinor, poCurrency),
+    variancePct: rest.variancePct,
+    tolerancePct: rest.tolerancePct,
+    message: rest.message,
+  };
 }

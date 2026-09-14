@@ -50,3 +50,53 @@ export const wireProcessingContextSchema = z.object({
 
 export type WireTransaction = z.infer<typeof wireTransactionSchema>;
 export type WireProcessingContext = z.infer<typeof wireProcessingContextSchema>;
+
+export const wireMatchingExceptionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("PO_NOT_FOUND"),
+    severity: z.string(),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("CURRENCY_MISMATCH"),
+    severity: z.string(),
+    invoiceCurrency: z.string(),
+    poCurrency: z.string(),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("PRICE_VARIANCE"),
+    severity: z.string(),
+    invoiceUnitPrice: z.number(),
+    poUnitPrice: z.number(),
+    variancePct: z.number(),
+    tolerancePct: z.number(),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("QUANTITY_VARIANCE"),
+    severity: z.string(),
+    invoiceQuantity: z.number(),
+    poQuantity: z.number(),
+    variancePct: z.number(),
+    tolerancePct: z.number(),
+    message: z.string(),
+  }),
+  z.object({
+    type: z.literal("MISSING_RECEIPT"),
+    severity: z.string(),
+    message: z.string(),
+  }),
+]);
+
+export const wireMatchingResultSchema = z.object({
+  matchType: z.string(),
+  exceptionDetected: z.boolean(),
+  exceptionCount: z.number(),
+  primaryExceptionType: z.string().nullable(),
+  exceptions: z.array(wireMatchingExceptionSchema),
+  matchStatus: z.string(),
+});
+
+export type WireMatchingException = z.infer<typeof wireMatchingExceptionSchema>;
+export type WireMatchingResult = z.infer<typeof wireMatchingResultSchema>;
