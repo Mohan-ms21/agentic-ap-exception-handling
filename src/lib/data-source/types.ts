@@ -5,7 +5,11 @@ import {
   investigationPathSchema,
   type ExceptionCase,
 } from "@/lib/domain/case";
-import { evaluationMetaSchema } from "@/lib/domain/evaluation";
+import {
+  invoiceExecutionSchema,
+  isExceptionCase,
+  type InvoiceExecution,
+} from "@/lib/domain/execution";
 import { governanceCategorySchema } from "@/lib/domain/governance";
 import { exceptionTypeSchema } from "@/lib/domain/matching";
 import {
@@ -13,56 +17,46 @@ import {
   riskLevelSchema,
 } from "@/lib/domain/resolution";
 import type { HumanReviewSubmission } from "@/lib/domain/review";
-import {
-  workflowStatusSchema,
-  type WorkflowStatus,
-} from "@/lib/domain/workflow";
+import { workflowStatusSchema } from "@/lib/domain/workflow";
 
 // The contract every backend (mock, n8n, LangGraph) implements. The UI
 // depends only on this file, never on a specific backend.
 
-/** One row in the exception queue. */
-export const caseSummarySchema = z.object({
-  caseId: z.string(),
+/** One invoice in a batch: its matching result and, if any, its case. */
+export const invoiceExecutionSummarySchema = z.object({
+  batchId: z.string(),
   invoiceId: z.string(),
   invoiceNumber: z.string(),
   supplierName: z.string(),
   poNumber: z.string(),
-  exceptionType: exceptionTypeSchema,
-  investigationPath: investigationPathSchema,
+  receivedAt: z.iso.datetime(),
+  matchStatus: z.enum(["MATCHED", "EXCEPTION"]),
+  primaryExceptionType: exceptionTypeSchema.nullable(),
+  exceptionCount: z.int().nonnegative(),
+  caseId: z.string().nullable(),
+  investigationPath: investigationPathSchema.nullable(),
   workflowStatus: workflowStatusSchema.nullable(),
   nextAction: z.string().nullable(),
-  receivedAt: z.iso.datetime(),
   governanceCategory: governanceCategorySchema.nullable(),
   automationAllowed: z.boolean().nullable(),
   riskLevel: riskLevelSchema.nullable(),
   confidence: z.number().nullable(),
   recommendedAction: recommendedActionSchema.nullable(),
-  evaluation: evaluationMetaSchema
-    .pick({
-      testCaseId: true,
-      suite: true,
-      scenario: true,
-      severity: true,
-      redTeamCategory: true,
-    })
-    .nullable(),
   dataQualityFlagCount: z.int().nonnegative(),
 });
 
-export { exceptionCaseSchema };
-export type CaseSummary = z.infer<typeof caseSummarySchema>;
-export type { ExceptionCase };
-
-export type CaseFilter = {
-  /** Only cases in these statuses; null matches cases with no investigation path. */
-  workflowStatus?: readonly (WorkflowStatus | null)[];
-  suite?: readonly ("CORE" | "RED_TEAM")[];
-};
+export { exceptionCaseSchema, invoiceExecutionSchema };
+export type InvoiceExecutionSummary = z.infer<
+  typeof invoiceExecutionSummarySchema
+>;
+export type { ExceptionCase, InvoiceExecution };
 
 export interface ExceptionDataSource {
-  /** Most recently received first. */
-  listCases(filter?: CaseFilter): Promise<CaseSummary[]>;
+  /** Every invoice in the demo batch, in batch order. */
+  listInvoiceExecutions(): Promise<InvoiceExecutionSummary[]>;
+
+  /** Resolves to null if no invoice has this id. */
+  getInvoiceExecution(invoiceId: string): Promise<InvoiceExecution | null>;
 
   /** Resolves to null if no case has this id. */
   getCase(caseId: string): Promise<ExceptionCase | null>;
@@ -92,34 +86,31 @@ export class DataSourceError extends Error {
   }
 }
 
-export function toCaseSummary(exceptionCase: ExceptionCase): CaseSummary {
-  const { caseContext, governance, evaluationMeta } = exceptionCase;
-  const agentDecision = caseAgentDecision(exceptionCase);
+export function toInvoiceExecutionSummary(
+  execution: InvoiceExecution,
+): InvoiceExecutionSummary {
+  const { invoice } = execution.transaction;
+  const exceptionCase = isExceptionCase(execution) ? execution : null;
+  const agentDecision = exceptionCase ? caseAgentDecision(exceptionCase) : null;
   return {
-    caseId: exceptionCase.caseId,
-    invoiceId: caseContext.invoiceId,
-    invoiceNumber: caseContext.invoiceNumber,
-    supplierName: caseContext.supplierName,
-    poNumber: caseContext.poNumber,
-    exceptionType: caseContext.exceptionType,
-    investigationPath: exceptionCase.investigationPath,
-    workflowStatus: exceptionCase.workflowStatus,
-    nextAction: exceptionCase.nextAction,
-    receivedAt: exceptionCase.processingContext.receivedAt,
-    governanceCategory: governance?.governanceCategory ?? null,
-    automationAllowed: governance?.automationAllowed ?? null,
+    batchId: execution.batchId,
+    invoiceId: invoice.invoiceId,
+    invoiceNumber: invoice.invoiceNumber,
+    supplierName: invoice.supplierName,
+    poNumber: invoice.poNumber,
+    receivedAt: execution.processingContext.receivedAt,
+    matchStatus: execution.matchingResult.matchStatus,
+    primaryExceptionType: execution.matchingResult.primaryExceptionType,
+    exceptionCount: execution.matchingResult.exceptionCount,
+    caseId: exceptionCase?.caseId ?? null,
+    investigationPath: exceptionCase?.investigationPath ?? null,
+    workflowStatus: execution.workflowStatus,
+    nextAction: execution.nextAction,
+    governanceCategory: exceptionCase?.governance?.governanceCategory ?? null,
+    automationAllowed: exceptionCase?.governance?.automationAllowed ?? null,
     riskLevel: agentDecision?.riskLevel ?? null,
     confidence: agentDecision?.confidence ?? null,
     recommendedAction: agentDecision?.recommendedAction ?? null,
-    evaluation: evaluationMeta
-      ? {
-          testCaseId: evaluationMeta.testCaseId,
-          suite: evaluationMeta.suite,
-          scenario: evaluationMeta.scenario,
-          severity: evaluationMeta.severity,
-          redTeamCategory: evaluationMeta.redTeamCategory,
-        }
-      : null,
-    dataQualityFlagCount: exceptionCase.dataQualityFlags.length,
+    dataQualityFlagCount: exceptionCase?.dataQualityFlags.length ?? 0,
   };
 }

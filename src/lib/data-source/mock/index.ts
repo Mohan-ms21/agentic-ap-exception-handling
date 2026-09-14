@@ -1,72 +1,79 @@
 import { z } from "zod";
 import {
   applyHumanReview,
-  exceptionCaseSchema,
-  openCase,
   recordAgentSteps,
   type ExceptionCase,
 } from "@/lib/domain/case";
 import {
+  invoiceExecutionSchema,
+  isExceptionCase,
+  startInvoiceExecution,
+  type InvoiceExecution,
+} from "@/lib/domain/execution";
+import {
   humanReviewSubmissionSchema,
   recordHumanReview,
 } from "@/lib/domain/review";
-import { allEvalCases } from "@/lib/eval/eval-cases";
+import { batchIntakeRows } from "@/lib/batch/batch-intake.generated";
+import { buildInvoiceProcessingInput } from "@/lib/batch/build-invoice-processing-input";
 import {
   DataSourceError,
-  toCaseSummary,
-  type CaseFilter,
+  toInvoiceExecutionSummary,
   type ExceptionDataSource,
 } from "../types";
-import { detectionOnlyCases, underInvestigationCase } from "./demo-cases";
+import { demoAgentStep } from "./demo-agent";
 
 export type MockDataSourceOptions = {
   /** Clock used to timestamp human reviews and audit records. */
   now?: () => Date;
 };
 
-/** Seed cases are timestamped from here, 15 minutes apart, for stable demos. */
-const SEED_START = Date.parse("2026-09-01T09:00:00.000Z");
-const minutes = (n: number) => n * 60_000;
+/** The batch shown in the demo walkthrough (section 31.2). */
+export const DEMO_BATCH_ID = "BATCH-DEMO-001";
 
 /**
- * In-memory data source over the eval dataset plus a few demo cases. State
- * lives in this instance only: it resets when the server restarts and is
- * not shared between serverless instances.
+ * Seed timestamps follow the solution documentation's INV-3002 example:
+ * received 2026-09-09T15:34:00.398Z, governance evaluated 18 seconds later.
+ */
+const BATCH_RECEIVED_AT = Date.parse("2026-09-09T15:34:00.398Z");
+const AGENT_DURATION_MS = 17_784;
+
+/**
+ * In-memory data source over the demo batch. State lives in this instance
+ * only: it resets when the server restarts and is not shared between
+ * serverless instances.
  */
 export function createMockDataSource(
   options: MockDataSourceOptions = {},
 ): ExceptionDataSource {
   const now = options.now ?? (() => new Date());
-  const cases = new Map<string, ExceptionCase>();
-  for (const seeded of seedCases()) {
-    cases.set(seeded.caseId, exceptionCaseSchema.parse(seeded));
+  const executions = new Map<string, InvoiceExecution>();
+  for (const execution of seedExecutions()) {
+    executions.set(
+      execution.transaction.invoice.invoiceId,
+      invoiceExecutionSchema.parse(execution) as InvoiceExecution,
+    );
   }
 
+  const findCase = (caseId: string) =>
+    [...executions.values()].find(
+      (e): e is ExceptionCase => isExceptionCase(e) && e.caseId === caseId,
+    );
+
   return {
-    async listCases(filter?: CaseFilter) {
-      return [...cases.values()]
-        .filter(
-          (c) =>
-            !filter?.workflowStatus ||
-            filter.workflowStatus.includes(c.workflowStatus),
-        )
-        .filter(
-          (c) =>
-            !filter?.suite ||
-            (c.evaluationMeta !== null &&
-              filter.suite.includes(c.evaluationMeta.suite)),
-        )
-        .sort(
-          (a, b) =>
-            b.processingContext.receivedAt.localeCompare(
-              a.processingContext.receivedAt,
-            ) || a.caseId.localeCompare(b.caseId),
-        )
-        .map((c) => structuredClone(toCaseSummary(c)));
+    async listInvoiceExecutions() {
+      return [...executions.values()].map((e) =>
+        structuredClone(toInvoiceExecutionSummary(e)),
+      );
     },
 
-    async getCase(caseId: string) {
-      const found = cases.get(caseId);
+    async getInvoiceExecution(invoiceId) {
+      const found = executions.get(invoiceId);
+      return found ? structuredClone(found) : null;
+    },
+
+    async getCase(caseId) {
+      const found = findCase(caseId);
       return found ? structuredClone(found) : null;
     },
 
@@ -78,7 +85,7 @@ export function createMockDataSource(
           `Invalid review:\n${z.prettifyError(parsed.error)}`,
         );
       }
-      const current = cases.get(caseId);
+      const current = findCase(caseId);
       if (!current) {
         throw new DataSourceError("not_found", `No case with id ${caseId}.`);
       }
@@ -95,62 +102,34 @@ export function createMockDataSource(
         recordHumanReview(parsed.data, at),
         at,
       );
-      cases.set(caseId, updated);
+      executions.set(updated.transaction.invoice.invoiceId, updated);
       return structuredClone(updated);
     },
   };
 }
 
-/**
- * The 12 eval cases continue past governance into the normal routing
- * (automation or human review) so the UI can show both paths; in an n8n
- * evaluation run the workflow stops after computing metrics instead.
- */
-function seedCases(): ExceptionCase[] {
-  const evalCases = allEvalCases((i) => ({
-    receivedAt: new Date(SEED_START + minutes(15 * i)),
-    evaluatedAt: new Date(SEED_START + minutes(15 * i) + 90_000),
-  })).map((evalCase, i) => {
-    const receivedAt = new Date(SEED_START + minutes(15 * i));
-    const opened = openCase(
-      {
-        batchId: evalCase.batchId,
-        transaction: evalCase.transaction,
-        processingContext: evalCase.processingContext,
-        evaluationMeta: evalCase.evaluationMeta,
-        evaluationExpected: evalCase.evaluationExpected,
-      },
-      receivedAt,
-    );
-    return recordAgentSteps(
-      opened,
-      evalCase.agentSteps,
-      new Date(evalCase.governance.evaluatedAt),
-    );
-  });
-
-  const offset = evalCases.length;
-  const demoCase = (
-    input: (typeof detectionOnlyCases)[number],
-    index: number,
-  ) => {
-    const receivedAt = new Date(SEED_START + minutes(15 * (offset + index)));
-    return openCase(
-      {
-        ...input,
-        processingContext: {
-          source: "BATCH_INTAKE",
-          mode: "NORMAL",
-          receivedAt: receivedAt.toISOString(),
-        },
-      },
-      receivedAt,
-    );
-  };
-
-  return [
-    ...evalCases,
-    ...detectionOnlyCases.map(demoCase),
-    demoCase(underInvestigationCase, detectionOnlyCases.length),
-  ];
+function seedExecutions(): InvoiceExecution[] {
+  return batchIntakeRows
+    .filter((row) => row.batchId === DEMO_BATCH_ID)
+    .map((row) => {
+      const receivedAt = new Date(BATCH_RECEIVED_AT);
+      const execution = startInvoiceExecution(
+        buildInvoiceProcessingInput(row, receivedAt),
+        receivedAt,
+      );
+      if (
+        !isExceptionCase(execution) ||
+        execution.investigationPath !== "PRICE_VARIANCE_AGENT"
+      ) {
+        return execution;
+      }
+      const completedAt = new Date(BATCH_RECEIVED_AT + AGENT_DURATION_MS);
+      const step = demoAgentStep(
+        execution.caseContext.invoiceId,
+        execution.transaction.purchaseOrder?.poNumber ??
+          execution.caseContext.poNumber,
+        { startedAt: receivedAt, completedAt },
+      );
+      return recordAgentSteps(execution, [step], completedAt);
+    });
 }

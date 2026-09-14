@@ -40,6 +40,11 @@ const NODES = [
   },
   {
     workflow: "TOOL - Get PO Amendment",
+    node: "Lookup PO Amendment",
+    file: "lookup-po-amendment.js",
+  },
+  {
+    workflow: "TOOL - Get PO Amendment",
     node: "Normalize Eval Amendment Response",
     file: "normalize-eval-amendment-response.js",
   },

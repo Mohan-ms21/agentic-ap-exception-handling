@@ -160,6 +160,12 @@ export function recordAgentSteps(
   const governance = applyGovernance(exceptionType, agentSteps, now);
   const withSteps = { ...current, agentSteps: [...agentSteps], governance };
 
+  // An evaluation run stops after governance, before automation or human
+  // review can create real work (section 18.3).
+  if (current.processingContext.mode === "EVALUATION") {
+    return withSteps;
+  }
+
   if (governance.automationAllowed) {
     const workflowStatus = "READY_FOR_AUTOMATED_RESOLUTION" as const;
     const nextAction = "REMATCH_USING_AMENDED_PO";

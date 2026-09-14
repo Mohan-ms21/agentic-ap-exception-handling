@@ -15,6 +15,7 @@ through the original node and the port, and the outputs must match (see
 | `apply-resolution-risk-policy.js`      | AP Invoice processing   | Apply Resolution Risk Policy      | `src/lib/domain/governance.ts`                    |
 | `build-evaluation-transaction.js`      | AP Invoice processing   | Build Evaluation Transaction      | `src/lib/eval/build-evaluation-transaction.ts`    |
 | `build-invoice-processing-input.js`    | AP Batch Intake         | Build Invoice Processing Input    | `src/lib/batch/build-invoice-processing-input.ts` |
+| `lookup-po-amendment.js`               | TOOL - Get PO Amendment | Lookup PO Amendment               | `src/lib/data-source/mock/lookup-po-amendment.ts` |
 | `normalize-eval-amendment-response.js` | TOOL - Get PO Amendment | Normalize Eval Amendment Response | `src/lib/eval/normalize-amendment-response.ts`    |
 
 These files are excluded from ESLint and Prettier so they stay byte-for-byte

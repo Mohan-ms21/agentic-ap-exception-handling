@@ -8,6 +8,7 @@ export type N8nCodeNode =
   | "apply-resolution-risk-policy"
   | "build-evaluation-transaction"
   | "build-invoice-processing-input"
+  | "lookup-po-amendment"
   | "normalize-eval-amendment-response";
 
 /**

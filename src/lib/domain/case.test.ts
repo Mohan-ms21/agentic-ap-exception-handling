@@ -278,3 +278,33 @@ describe("agent steps on a case", () => {
     expect(automated.auditRecord?.agentDecision).toEqual(approved);
   });
 });
+
+describe("evaluation runs (section 18.3)", () => {
+  const evaluationInput: OpenCaseInput = {
+    ...input,
+    processingContext: {
+      ...input.processingContext,
+      source: "EVALUATION",
+      mode: "EVALUATION",
+    },
+  };
+
+  it.each([
+    ["an automatable decision", approved],
+    ["a decision needing review", pending],
+  ])(
+    "stop after governance for %s: no automation, review request or audit",
+    (_, decision) => {
+      const evaluated = recordAgentSteps(openCase(evaluationInput), [
+        step(decision),
+      ]);
+      expect(evaluated.governance).not.toBeNull();
+      expect(evaluated).toMatchObject({
+        workflowStatus: "UNDER_AGENT_INVESTIGATION",
+        nextAction: null,
+        humanReviewRequest: null,
+        auditRecord: null,
+      });
+    },
+  );
+});
