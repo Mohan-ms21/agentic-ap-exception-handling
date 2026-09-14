@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyGovernance,
   applyResolutionRiskPolicy,
-  GOVERNANCE_REASONS,
+  GOVERNANCE_POLICIES,
+  governancePolicyFor,
+  priceVarianceGovernancePolicy,
+  PRICE_VARIANCE_GOVERNANCE_REASONS,
   type GovernanceCategory,
 } from "./governance";
 import {
@@ -150,7 +154,7 @@ describe("policy invariants over every combination", () => {
                 expected === "SAFE_AUTOMATION",
               );
               expect(governance.governanceReason).toBe(
-                GOVERNANCE_REASONS[expected],
+                PRICE_VARIANCE_GOVERNANCE_REASONS[expected],
               );
               count++;
             }
@@ -168,5 +172,43 @@ it("uses the n8n node's reason text and the supplied clock", () => {
     governanceReason:
       "One or more automation criteria were not satisfied; human review is required.",
     evaluatedAt: "2026-09-01T09:02:00.000Z",
+  });
+});
+
+describe("policy registry", () => {
+  const step = {
+    agentName: "Price Variance Investigation Agent",
+    objective: "Investigate.",
+    toolCalls: null,
+    startedAt: null,
+    completedAt: null,
+    outputSchemaId: "PRICE_VARIANCE_RESOLUTION" as const,
+    output: safeDecision,
+  };
+
+  it("registers the ported n8n rule as the price variance policy", () => {
+    expect(GOVERNANCE_POLICIES.PRICE_VARIANCE).toBe(
+      priceVarianceGovernancePolicy,
+    );
+    expect(governancePolicyFor("PRICE_VARIANCE").n8nNode).toBe(
+      "Apply Resolution Risk Policy",
+    );
+  });
+
+  it("records that the current policy does not verify tool evidence", () => {
+    expect(priceVarianceGovernancePolicy.verifiesToolEvidence).toBe(false);
+  });
+
+  it("applies the policy for the exception type to the resolution step", () => {
+    const now = new Date("2026-09-01T09:02:00.000Z");
+    expect(applyGovernance("PRICE_VARIANCE", [step], now)).toEqual(
+      applyResolutionRiskPolicy(safeDecision, now),
+    );
+  });
+
+  it("has no policy for exception types without an agent path", () => {
+    expect(() => governancePolicyFor("QUANTITY_VARIANCE")).toThrow(
+      /No governance policy/,
+    );
   });
 });

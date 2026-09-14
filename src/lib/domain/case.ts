@@ -2,7 +2,7 @@ import { z } from "zod";
 import { agentStepSchema, resolutionStep, type AgentStep } from "./agent-steps";
 import { auditRecordSchema, buildAuditRecord } from "./audit";
 import { evaluationExpectedSchema, evaluationMetaSchema } from "./evaluation";
-import { applyResolutionRiskPolicy, governanceSchema } from "./governance";
+import { applyGovernance, governanceSchema } from "./governance";
 import {
   exceptionTypeSchema,
   matchingResultSchema,
@@ -156,7 +156,8 @@ export function recordAgentSteps(
     agentSteps,
     current.caseContext.exceptionType,
   ).output;
-  const governance = applyResolutionRiskPolicy(decision, now);
+  const exceptionType = current.caseContext.exceptionType;
+  const governance = applyGovernance(exceptionType, agentSteps, now);
   const withSteps = { ...current, agentSteps: [...agentSteps], governance };
 
   if (governance.automationAllowed) {

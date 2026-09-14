@@ -1,8 +1,5 @@
 import { resolutionStep, type AgentStep } from "@/lib/domain/agent-steps";
-import {
-  applyResolutionRiskPolicy,
-  type Governance,
-} from "@/lib/domain/governance";
+import { applyGovernance, type Governance } from "@/lib/domain/governance";
 import { runMatching, type MatchingResult } from "@/lib/domain/matching";
 import type { AgentDecision, PoAmendmentLookup } from "@/lib/domain/resolution";
 import {
@@ -56,7 +53,11 @@ export function runEvalCase(
     toolLookup,
     agentSteps,
     agentDecision,
-    governance: applyResolutionRiskPolicy(agentDecision, clock.evaluatedAt),
+    governance: applyGovernance(
+      "PRICE_VARIANCE",
+      agentSteps,
+      clock.evaluatedAt,
+    ),
   };
 }
 
