@@ -16,7 +16,7 @@ const RECAP = [
   },
   {
     stage: "Govern",
-    text: "A deterministic policy, not the model's confidence, decided that automation was not allowed.",
+    text: "A deterministic policy, not the model's confidence, decided whether automation was allowed.",
     step: "governance",
   },
   {
