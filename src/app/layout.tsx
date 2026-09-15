@@ -15,12 +15,16 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "AP Exception Handling",
-    template: "%s | AP Exception Handling",
+    default: "AP Exception Resolution Agent",
+    template: "%s | AP Exception Resolution Agent",
   },
   description:
-    "Demo of agentic accounts-payable invoice exception triage with human approval.",
+    "Demo of agentic accounts-payable exception resolution: deterministic matching, a bounded AI agent, deterministic governance, human review and evaluation.",
 };
+
+// Pages read the in-memory demo state, which changes when a review is
+// submitted, so they render per request rather than at build time.
+export const dynamic = "force-dynamic";
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -28,11 +32,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="flex min-h-full flex-col bg-neutral-50 text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
         <AppHeader />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-          {children}
-        </main>
+        {children}
       </body>
     </html>
   );
