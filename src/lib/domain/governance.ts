@@ -15,15 +15,39 @@ export const governanceCategorySchema = z.enum([
   "BUSINESS_REVIEW_REQUIRED",
 ]);
 
+/**
+ * Deterministic check of the authoritative PO amendment record, written by
+ * the hardened n8n policy. LOOKUP_FAILED means the evidence could not be
+ * retrieved (an outage, a missing result, or a result for another PO);
+ * CONTRADICTION means the lookup succeeded but does not support automation
+ * (no amendment, status not APPROVED, price or currency mismatch).
+ */
+export const evidenceVerificationSchema = z.object({
+  outcome: z.enum(["VERIFIED", "LOOKUP_FAILED", "CONTRADICTION"]),
+  verified: z.boolean(),
+  /** Whether the agent's decision met every automation criterion. */
+  agentClaimedAutomation: z.boolean(),
+  failures: z.array(
+    z.object({
+      type: z.enum(["LOOKUP_FAILED", "CONTRADICTION"]),
+      check: z.string(),
+      message: z.string(),
+    }),
+  ),
+});
+
 export const governanceSchema = z.object({
   automationAllowed: z.boolean(),
   governanceCategory: governanceCategorySchema,
   governanceReason: z.string(),
+  /** Present only when the policy verifies tool evidence (hardened policy). */
+  evidenceVerification: evidenceVerificationSchema.optional(),
   evaluatedAt: z.iso.datetime(),
 });
 
 export type GovernanceCategory = z.infer<typeof governanceCategorySchema>;
 export type Governance = z.infer<typeof governanceSchema>;
+export type EvidenceVerification = z.infer<typeof evidenceVerificationSchema>;
 
 export type GovernancePolicy<TOutput> = {
   /** The n8n node that implements this policy. */

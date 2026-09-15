@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  governanceSchema,
   applyGovernance,
   applyResolutionRiskPolicy,
   GOVERNANCE_POLICIES,
@@ -210,5 +211,51 @@ describe("policy registry", () => {
     expect(() => governancePolicyFor("QUANTITY_VARIANCE")).toThrow(
       /No governance policy/,
     );
+  });
+});
+
+describe("governanceSchema", () => {
+  const base = {
+    automationAllowed: false,
+    governanceCategory: "BUSINESS_REVIEW_REQUIRED",
+    governanceReason:
+      "The agent recommended automation, but the authoritative PO amendment record contradicts its claim; human review is required.",
+    evaluatedAt: "2026-09-15T08:00:00.000Z",
+  };
+
+  it("keeps the hardened policy's evidence verification rather than stripping it", () => {
+    const evidenceVerification = {
+      outcome: "CONTRADICTION",
+      verified: false,
+      agentClaimedAutomation: true,
+      failures: [
+        {
+          type: "CONTRADICTION",
+          check: "amendmentStatus",
+          message: "Amendment status is PENDING, not APPROVED.",
+        },
+      ],
+    };
+    expect(
+      governanceSchema.parse({ ...base, evidenceVerification })
+        .evidenceVerification,
+    ).toEqual(evidenceVerification);
+  });
+
+  it("accepts the current policy's output, which has no evidence verification", () => {
+    expect(governanceSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("rejects an unknown failure type", () => {
+    const result = governanceSchema.safeParse({
+      ...base,
+      evidenceVerification: {
+        outcome: "CONTRADICTION",
+        verified: false,
+        agentClaimedAutomation: true,
+        failures: [{ type: "OUTAGE", check: "lookupStatus", message: "down" }],
+      },
+    });
+    expect(result.success).toBe(false);
   });
 });
