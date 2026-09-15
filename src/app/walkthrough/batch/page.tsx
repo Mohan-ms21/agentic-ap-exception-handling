@@ -9,6 +9,16 @@ import { loadBatch } from "@/lib/server/demo";
 export default async function BatchStep() {
   const executions = await loadBatch();
   const batchId = executions[0]?.batchId;
+  const waiting = executions.filter(
+    (e) => e.workflowStatus === "WAITING_FOR_HUMAN_REVIEW",
+  );
+  const stopped = executions.filter(
+    (e) => e.investigationPath === "NONE",
+  ).length;
+  const waitingSummary =
+    waiting.length > 0
+      ? `${waiting.map((e) => e.invoiceId).join(", ")} ${waiting.length === 1 ? "is" : "are"} waiting for an analyst while the others have finished or stopped at routing (${stopped} with no investigation path yet).`
+      : `no execution is waiting: the others have finished or stopped at routing (${stopped} with no investigation path yet).`;
 
   return (
     <StepPage
@@ -71,9 +81,7 @@ export default async function BatchStep() {
           <p className="text-sm text-neutral-700 dark:text-neutral-300">
             In n8n the same batch shows <Badge tone="success">Succeeded</Badge>{" "}
             and <Badge tone="warning">Waiting</Badge> executions side by side.
-            Here, INV-3002 is waiting for an analyst while the other five have
-            finished: one matched, and four stopped at routing because their
-            exception types have no investigation path yet.
+            Here, {waitingSummary}
           </p>
         </Panel>
       </div>

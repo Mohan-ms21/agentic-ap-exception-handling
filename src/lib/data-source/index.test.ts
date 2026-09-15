@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDataSource } from ".";
+import { getDataSource, resetDemoState } from ".";
 
 describe("getDataSource", () => {
   afterEach(() => {
@@ -16,5 +16,12 @@ describe("getDataSource", () => {
   it("throws for a backend that is not implemented", () => {
     vi.stubEnv("DATA_SOURCE", "n8n");
     expect(() => getDataSource()).toThrow(/not implemented yet/);
+  });
+
+  it("resets mock demo state to a fresh instance", () => {
+    vi.stubEnv("DATA_SOURCE", "mock");
+    const before = getDataSource();
+    expect(resetDemoState()).toBe(true);
+    expect(getDataSource()).not.toBe(before);
   });
 });

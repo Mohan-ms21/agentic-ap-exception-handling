@@ -22,3 +22,14 @@ export function getDataSource(): ExceptionDataSource {
   }
   return cache.__exceptionDataSource;
 }
+
+/**
+ * Discards in-memory demo state so the next request starts from the seeded
+ * batch. Only meaningful for the mock backend, whose state is shared by every
+ * visitor to this server process.
+ */
+export function resetDemoState(): boolean {
+  if (resolveDataSourceName(process.env.DATA_SOURCE) !== "mock") return false;
+  delete cache.__exceptionDataSource;
+  return true;
+}
