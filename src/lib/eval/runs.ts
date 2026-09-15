@@ -151,6 +151,26 @@ function inputsFor(row: EvalDatasetRow, fixtures: readonly EvalDatasetRow[]) {
   };
 }
 
+export type EvaluationCase = Pick<
+  EvaluationRunRow,
+  "meta" | "expected" | "inputs"
+>;
+
+/** The dataset's cases, independent of any run: for the dataset and red-team views. */
+export function evaluationCases(
+  datasetRows: readonly EvalDatasetRow[] = evalDatasetRows,
+  fixtures: readonly EvalDatasetRow[] = evalFixtureRows,
+): EvaluationCase[] {
+  return datasetRows.map((row) => {
+    const { evaluation, toolLookup } = inputsFor(row, fixtures);
+    return {
+      meta: evaluation.evaluationMeta,
+      expected: evaluation.evaluationExpected,
+      inputs: { transaction: evaluation.transaction, toolLookup },
+    };
+  });
+}
+
 export function selfTestRun(): EvaluationRun {
   const rows = allEvalCases().map((c): EvaluationRunRow => {
     const actual = evaluationActualFrom(c.agentDecision, c.governance);

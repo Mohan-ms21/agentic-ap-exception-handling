@@ -17,7 +17,11 @@ import {
   riskLevelSchema,
 } from "@/lib/domain/resolution";
 import type { HumanReviewSubmission } from "@/lib/domain/review";
-import type { EvaluationRun, NamedModelRun } from "@/lib/eval/runs";
+import type {
+  EvaluationCase,
+  EvaluationRun,
+  NamedModelRun,
+} from "@/lib/eval/runs";
 import { workflowStatusSchema } from "@/lib/domain/workflow";
 
 // The contract every backend (mock, n8n, LangGraph) implements. The UI
@@ -82,6 +86,7 @@ export interface ExceptionDataSource {
 }
 
 export type EvaluationRuns = {
+  cases: EvaluationCase[];
   modelRuns: NamedModelRun[];
   selfTest: EvaluationRun;
 };

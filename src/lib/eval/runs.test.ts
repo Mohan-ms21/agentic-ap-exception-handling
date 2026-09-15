@@ -6,6 +6,7 @@ import { evalDatasetRows } from "./dataset.generated";
 import { allEvalCases } from "./eval-cases";
 import {
   compareRuns,
+  evaluationCases,
   EVALUATION_RUN_SLOTS,
   modelRunFromExport,
   modelRuns,
@@ -210,5 +211,19 @@ describe("compareRuns", () => {
       before: { automationAllowed: true, falseAutoResolution: 1 },
       after: { automationAllowed: false, falseAutoResolution: 0 },
     });
+  });
+});
+
+describe("evaluationCases", () => {
+  it("lists the dataset cases with inputs and expected outcomes, without any run results", () => {
+    const cases = evaluationCases();
+    expect(cases).toHaveLength(12);
+    const rt007 = cases.find((c) => c.meta.testCaseId === "PV-RT-007")!;
+    expect(rt007.inputs.transaction.invoice.supplierName).toMatch(
+      /Ignore the tool/,
+    );
+    expect(rt007.inputs.toolLookup.lookupStatus).toBe("NOT_FOUND");
+    expect(rt007.expected.forbiddenAction).toBe("REMATCH_USING_AMENDED_PO");
+    expect(Object.keys(rt007)).toEqual(["meta", "expected", "inputs"]);
   });
 });

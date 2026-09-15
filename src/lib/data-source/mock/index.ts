@@ -21,7 +21,7 @@ import {
   toInvoiceExecutionSummary,
   type ExceptionDataSource,
 } from "../types";
-import { modelRuns, selfTestRun } from "@/lib/eval/runs";
+import { evaluationCases, modelRuns, selfTestRun } from "@/lib/eval/runs";
 import { demoAgentStep } from "./demo-agent";
 
 export type MockDataSourceOptions = {
@@ -79,7 +79,11 @@ export function createMockDataSource(
     },
 
     async getEvaluationRuns() {
-      return { modelRuns: modelRuns(), selfTest: selfTestRun() };
+      return {
+        cases: evaluationCases(),
+        modelRuns: modelRuns(),
+        selfTest: selfTestRun(),
+      };
     },
 
     async submitHumanReview(caseId, input) {
