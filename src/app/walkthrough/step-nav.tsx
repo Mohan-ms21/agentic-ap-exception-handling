@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { stepHref, WALKTHROUGH_STEPS } from "@/lib/walkthrough";
 
 export function StepNav() {
   const pathname = usePathname();
+  const activeRef = useRef<HTMLAnchorElement>(null);
+
+  // On narrow screens the steps scroll horizontally; keep the current one visible.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [pathname]);
   return (
     <nav aria-label="Walkthrough steps">
       <p className="mb-2 hidden text-xs font-semibold tracking-wide text-neutral-500 uppercase lg:block dark:text-neutral-400">
@@ -18,6 +25,7 @@ export function StepNav() {
             <li key={step.slug} className="shrink-0">
               <Link
                 href={stepHref(step.slug)}
+                ref={active ? activeRef : undefined}
                 aria-current={active ? "step" : undefined}
                 className={`flex items-baseline gap-2 rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap ${
                   active
