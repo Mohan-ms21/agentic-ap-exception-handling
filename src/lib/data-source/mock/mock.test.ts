@@ -285,9 +285,12 @@ describe("submitHumanReview", () => {
 });
 
 describe("getEvaluationRuns", () => {
-  it("has no model run imported yet and a self-test labelled as such", async () => {
-    const { modelRun, selfTest } = await create().getEvaluationRuns();
-    expect(modelRun).toEqual({ status: "NOT_IMPORTED" });
+  it("has no model runs imported yet and a self-test labelled as such", async () => {
+    const { modelRuns, selfTest } = await create().getEvaluationRuns();
+    expect(modelRuns.map((r) => [r.slot.id, r.state.status])).toEqual([
+      ["baseline", "NOT_IMPORTED"],
+      ["hardened", "NOT_IMPORTED"],
+    ]);
     expect(selfTest).toMatchObject({
       kind: "SELF_TEST",
       label: "Scoring pipeline self-test",

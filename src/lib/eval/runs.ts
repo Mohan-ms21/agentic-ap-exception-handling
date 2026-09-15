@@ -5,12 +5,14 @@ import {
   rootCauseSchema,
   type PoAmendmentLookup,
 } from "@/lib/domain/resolution";
+import type { EvaluationMeta } from "@/lib/domain/evaluation";
 import type { Transaction } from "@/lib/domain/transaction";
 import {
   buildEvaluationTransaction,
   type EvalDatasetRow,
 } from "./build-evaluation-transaction";
 import { evalDatasetRows, evalFixtureRows } from "./dataset.generated";
+import { evalRunExports } from "./runs.generated";
 import { allEvalCases } from "./eval-cases";
 import {
   aggregateMetrics,
@@ -60,10 +62,37 @@ export type EvaluationRun = {
   gates: ReleaseGate[];
 };
 
+export type EvaluationRunSlotId = "baseline" | "hardened";
+
+export type EvaluationRunSlot = {
+  id: EvaluationRunSlotId;
+  label: string;
+  description: string;
+};
+
+/** The named model runs the evaluation view compares, in order. */
+export const EVALUATION_RUN_SLOTS: readonly EvaluationRunSlot[] = [
+  {
+    id: "baseline",
+    label: "Baseline: current policy",
+    description:
+      "n8n evaluation run with the current Apply Resolution Risk Policy, which trusts the root cause asserted by the agent.",
+  },
+  {
+    id: "hardened",
+    label: "Hardened: evidence validation",
+    description:
+      "n8n evaluation run with deterministic evidence validation: the policy checks an independent PO amendment lookup before allowing automation.",
+  },
+];
+
 export type ModelRunState =
   | { status: "NOT_IMPORTED" }
   | { status: "INCOMPLETE"; missingTestCaseIds: string[] }
+  | { status: "MISMATCHED"; problems: string[] }
   | { status: "IMPORTED"; run: EvaluationRun };
+
+export type NamedModelRun = { slot: EvaluationRunSlot; state: ModelRunState };
 
 export const SELF_TEST_LABEL = "Scoring pipeline self-test";
 export const SELF_TEST_DESCRIPTION =
@@ -144,41 +173,100 @@ export function selfTestRun(): EvaluationRun {
 
 const toBoolean = (value: string) => value.trim().toLowerCase() === "true";
 
+/** Columns of the dataset that describe the case, not the run's results. */
+const INPUT_COLUMNS = [
+  "suite",
+  "scenario",
+  "fixtureKey",
+  "invoiceId",
+  "supplierName",
+  "poNumber",
+  "invoiceUnitPrice",
+  "poUnitPrice",
+  "invoiceCurrency",
+  "poCurrency",
+  "priceTolerancePct",
+  "expectedRootCause",
+  "expectedAction",
+  "expectedRiskLevel",
+  "expectedHumanReview",
+  "expectedAutomationAllowed",
+  "expectedGovernanceCategory",
+  "expectedEvidencePresent",
+  "forbiddenRootCause",
+  "forbiddenAction",
+] as const;
+
 /**
- * Reads a model run from the dataset export's actual* columns. Metrics are
- * recomputed with the ported node rather than read from the stored metric
- * columns; stored values that disagree (or are not 0/1) are reported, not
- * trusted.
+ * Reads a model run from an n8n evaluation data table export. Only the
+ * actual* columns and evaluationRunAt are taken from the export: inputs and
+ * expected outcomes come from the dataset, and an export that disagrees with
+ * the dataset is reported as mismatched. Metrics are recomputed with the
+ * ported node; stored metric columns that disagree (or are not 0/1) are
+ * reported, not trusted.
  */
-export function modelRunFromDataset(
+export function modelRunFromExport(
+  slot: EvaluationRunSlot,
+  exportRows: readonly EvalDatasetRow[] | null,
   datasetRows: readonly EvalDatasetRow[] = evalDatasetRows,
   fixtures: readonly EvalDatasetRow[] = evalFixtureRows,
 ): ModelRunState {
+  if (!exportRows) return { status: "NOT_IMPORTED" };
+
+  const problems: string[] = [];
+  const exportIds = exportRows.map((r) => r.testCaseId);
+  const datasetIds = datasetRows.map((r) => r.testCaseId);
+  for (const id of datasetIds.filter((id) => !exportIds.includes(id))) {
+    problems.push(`${id} is in the dataset but not in the export.`);
+  }
+  for (const id of exportIds.filter((id) => !datasetIds.includes(id))) {
+    problems.push(`${id} is in the export but not in the dataset.`);
+  }
+  for (const datasetRow of datasetRows) {
+    const exported = exportRows.find(
+      (r) => r.testCaseId === datasetRow.testCaseId,
+    );
+    if (!exported) continue;
+    for (const column of INPUT_COLUMNS) {
+      if ((exported[column] ?? "") !== datasetRow[column]) {
+        problems.push(
+          `${datasetRow.testCaseId}: ${column} is "${exported[column] ?? ""}" in the export but "${datasetRow[column]}" in the dataset.`,
+        );
+      }
+    }
+  }
+  if (problems.length > 0) return { status: "MISMATCHED", problems };
+
   const hasActuals = (row: EvalDatasetRow) =>
     ACTUAL_COLUMNS.every((c) => (row[c] ?? "").trim() !== "");
-  const filled = datasetRows.filter(hasActuals);
-  if (filled.length === 0) return { status: "NOT_IMPORTED" };
-  if (filled.length < datasetRows.length) {
+  const missing = datasetRows.filter(
+    (row) =>
+      !hasActuals(exportRows.find((r) => r.testCaseId === row.testCaseId)!),
+  );
+  if (missing.length > 0) {
     return {
       status: "INCOMPLETE",
-      missingTestCaseIds: datasetRows
-        .filter((r) => !hasActuals(r))
-        .map((r) => r.testCaseId),
+      missingTestCaseIds: missing.map((r) => r.testCaseId),
     };
   }
 
-  const rows = datasetRows.map((row): EvaluationRunRow => {
-    const { evaluation, toolLookup } = inputsFor(row, fixtures);
+  const rows = datasetRows.map((datasetRow): EvaluationRunRow => {
+    const exported = exportRows.find(
+      (r) => r.testCaseId === datasetRow.testCaseId,
+    )!;
+    const { evaluation, toolLookup } = inputsFor(datasetRow, fixtures);
     const actual: EvaluationActual = {
-      rootCause: rootCauseSchema.parse(row.actualRootCause.trim()),
-      recommendedAction: recommendedActionSchema.parse(row.actualAction.trim()),
-      riskLevel: riskLevelSchema.parse(row.actualRiskLevel.trim()),
-      requiresHumanReview: toBoolean(row.actualHumanReview),
-      automationAllowed: toBoolean(row.actualAutomationAllowed),
-      governanceCategory: governanceCategorySchema.parse(
-        row.actualGovernanceCategory.trim(),
+      rootCause: rootCauseSchema.parse(exported.actualRootCause.trim()),
+      recommendedAction: recommendedActionSchema.parse(
+        exported.actualAction.trim(),
       ),
-      evidencePresent: toBoolean(row.actualEvidencePresent),
+      riskLevel: riskLevelSchema.parse(exported.actualRiskLevel.trim()),
+      requiresHumanReview: toBoolean(exported.actualHumanReview),
+      automationAllowed: toBoolean(exported.actualAutomationAllowed),
+      governanceCategory: governanceCategorySchema.parse(
+        exported.actualGovernanceCategory.trim(),
+      ),
+      evidencePresent: toBoolean(exported.actualEvidencePresent),
     };
     const metrics = scoreEvaluationRow(
       evaluation.evaluationExpected,
@@ -187,7 +275,7 @@ export function modelRunFromDataset(
     );
     const metricDiscrepancies = METRIC_COLUMNS.flatMap(
       (metric): MetricDiscrepancy[] => {
-        const stored = (row[metric] ?? "").trim();
+        const stored = (exported[metric] ?? "").trim();
         if (stored === "") return [];
         return stored === String(metrics[metric])
           ? []
@@ -201,17 +289,91 @@ export function modelRunFromDataset(
       metrics,
       inputs: { transaction: evaluation.transaction, toolLookup },
       metricDiscrepancies,
-      evaluationRunAt: row.evaluationRunAt?.trim() || null,
+      evaluationRunAt: exported.evaluationRunAt?.trim() || null,
     };
   });
 
   return {
     status: "IMPORTED",
-    run: run(
-      "MODEL_RUN",
-      "n8n evaluation run",
-      "Agent results recorded by an n8n evaluation run of the AP Invoice processing workflow, rescored with the ported metrics.",
-      rows,
-    ),
+    run: run("MODEL_RUN", slot.label, slot.description, rows),
   };
+}
+
+export function modelRuns(
+  exports: Readonly<
+    Record<EvaluationRunSlotId, readonly EvalDatasetRow[] | null>
+  > = evalRunExports,
+): NamedModelRun[] {
+  return EVALUATION_RUN_SLOTS.map((slot) => ({
+    slot,
+    state: modelRunFromExport(slot, exports[slot.id]),
+  }));
+}
+
+// --- Before / after comparison ------------------------------------------------------
+
+export type GateComparison = {
+  id: string;
+  label: string;
+  threshold: string;
+  before: ReleaseGate;
+  after: ReleaseGate;
+};
+
+export type RowComparison = {
+  testCaseId: string;
+  suite: EvaluationMeta["suite"];
+  scenario: string;
+  expected: Pick<EvaluationActual, "automationAllowed" | "governanceCategory">;
+  before: Pick<EvaluationActual, "automationAllowed" | "governanceCategory"> & {
+    falseAutoResolution: 0 | 1;
+    overallDecisionCorrect: 0 | 1;
+  };
+  after: RowComparison["before"];
+  changed: boolean;
+};
+
+export type RunComparison = { gates: GateComparison[]; rows: RowComparison[] };
+
+/** Lines up two runs of the same dataset, gate by gate and case by case. */
+export function compareRuns(
+  before: EvaluationRun,
+  after: EvaluationRun,
+): RunComparison {
+  const gates = before.gates.map((gate) => {
+    const match = after.gates.find((g) => g.id === gate.id)!;
+    return {
+      id: gate.id,
+      label: gate.label,
+      threshold: gate.threshold,
+      before: gate,
+      after: match,
+    };
+  });
+  const summary = (row: EvaluationRunRow) => ({
+    automationAllowed: row.actual.automationAllowed,
+    governanceCategory: row.actual.governanceCategory,
+    falseAutoResolution: row.metrics.falseAutoResolution,
+    overallDecisionCorrect: row.metrics.overallDecisionCorrect,
+  });
+  const rows = before.rows.map((row) => {
+    const other = after.rows.find(
+      (r) => r.meta.testCaseId === row.meta.testCaseId,
+    )!;
+    const b = summary(row);
+    const a = summary(other);
+    return {
+      testCaseId: row.meta.testCaseId,
+      suite: row.meta.suite,
+      scenario: row.meta.scenario,
+      expected: {
+        automationAllowed: row.expected.automationAllowed,
+        governanceCategory: row.expected.governanceCategory,
+      },
+      before: b,
+      after: a,
+      changed: JSON.stringify(a) !== JSON.stringify(b),
+    };
+  });
+  return { gates, rows };
 }

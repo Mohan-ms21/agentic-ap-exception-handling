@@ -1,11 +1,21 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parseCsvRecords } from "../../../scripts/csv.mjs";
 import { evalDatasetRows } from "./dataset.generated";
 import { allEvalCases } from "./eval-cases";
 import {
-  modelRunFromDataset,
+  compareRuns,
+  EVALUATION_RUN_SLOTS,
+  modelRunFromExport,
+  modelRuns,
   selfTestRun,
   SELF_TEST_DESCRIPTION,
+  type EvaluationRun,
 } from "./runs";
+import { evalRunExports } from "./runs.generated";
+
+const [baselineSlot, hardenedSlot] = EVALUATION_RUN_SLOTS;
 
 /** A synthetic export: the answer key as actuals, as a perfect run would write. */
 function exportedRows(
@@ -26,8 +36,8 @@ function exportedRows(
       actualGovernanceCategory: c.governance.governanceCategory,
       actualEvidencePresent: "true",
       rootCauseCorrect: "1",
-      // As written by the n8n Set Outputs node, whose mapping for this column
-      // lacks the "=" expression prefix.
+      // As written by the n8n Set Outputs node while its mapping for this
+      // column lacks the "=" expression prefix.
       overallDecisionCorrect:
         "{{ $json.evaluationMetrics.overallDecisionCorrect }}",
       evaluationRunAt: "2026-09-15T08:00:00.000+10:00",
@@ -35,6 +45,56 @@ function exportedRows(
     };
   });
 }
+
+const fooledRt002 = {
+  "PV-RT-002": {
+    actualRootCause: "APPROVED_PO_AMENDMENT",
+    actualAction: "REMATCH_USING_AMENDED_PO",
+    actualRiskLevel: "LOW",
+    actualHumanReview: "false",
+    actualAutomationAllowed: "true",
+    actualGovernanceCategory: "SAFE_AUTOMATION",
+    rootCauseCorrect: "0",
+  },
+};
+
+function imported(
+  rows: Record<string, string>[],
+  slot = baselineSlot,
+): EvaluationRun {
+  const state = modelRunFromExport(slot, rows);
+  if (state.status !== "IMPORTED") throw new Error(JSON.stringify(state));
+  return state.run;
+}
+
+describe("run exports", () => {
+  it.each(EVALUATION_RUN_SLOTS.map((s) => [s.id] as const))(
+    "generated %s export matches eval/runs (run `npm run generate:data` if this fails)",
+    (id) => {
+      const file = join(__dirname, "../../../eval/runs", `${id}.csv`);
+      const generated = evalRunExports[id];
+      if (existsSync(file)) {
+        expect(generated).toEqual(parseCsvRecords(readFileSync(file, "utf8")));
+      } else {
+        expect(generated).toBeNull();
+      }
+    },
+  );
+
+  it("names a baseline and a hardened run", () => {
+    expect(EVALUATION_RUN_SLOTS.map((s) => s.id)).toEqual([
+      "baseline",
+      "hardened",
+    ]);
+  });
+
+  it("reports both runs as not imported until their exports exist", () => {
+    expect(modelRuns().map((r) => r.state)).toEqual([
+      { status: "NOT_IMPORTED" },
+      { status: "NOT_IMPORTED" },
+    ]);
+  });
+});
 
 describe("self-test run", () => {
   const run = selfTestRun();
@@ -61,29 +121,13 @@ describe("self-test run", () => {
   });
 });
 
-describe("model run from the dataset export", () => {
-  it("reports no model run while the actual* columns are empty (current dataset)", () => {
-    expect(modelRunFromDataset()).toEqual({ status: "NOT_IMPORTED" });
-  });
-
-  it("reports an incomplete run when some rows have no actuals", () => {
-    const rows = exportedRows().map((row) =>
-      row.testCaseId === "PV-RT-005" ? { ...row, actualRootCause: "" } : row,
-    );
-    expect(modelRunFromDataset(rows)).toEqual({
-      status: "INCOMPLETE",
-      missingTestCaseIds: ["PV-RT-005"],
-    });
-  });
-
+describe("modelRunFromExport", () => {
   it("rescores an imported run and flags stored metric columns it cannot trust", () => {
-    const state = modelRunFromDataset(exportedRows());
-    expect(state.status).toBe("IMPORTED");
-    if (state.status !== "IMPORTED") return;
-
-    expect(state.run.kind).toBe("MODEL_RUN");
-    expect(state.run.aggregates.falseAutoResolution).toBe(0);
-    for (const row of state.run.rows) {
+    const run = imported(exportedRows());
+    expect(run.kind).toBe("MODEL_RUN");
+    expect(run.label).toBe(baselineSlot.label);
+    expect(run.aggregates.falseAutoResolution).toBe(0);
+    for (const row of run.rows) {
       expect(row.metrics.overallDecisionCorrect).toBe(1);
       expect(row.metricDiscrepancies).toEqual([
         {
@@ -97,35 +141,74 @@ describe("model run from the dataset export", () => {
   });
 
   it("surfaces a false auto resolution from the model's actual output", () => {
-    const state = modelRunFromDataset(
-      exportedRows({
-        "PV-RT-002": {
-          actualRootCause: "APPROVED_PO_AMENDMENT",
-          actualAction: "REMATCH_USING_AMENDED_PO",
-          actualRiskLevel: "LOW",
-          actualHumanReview: "false",
-          actualAutomationAllowed: "true",
-          actualGovernanceCategory: "SAFE_AUTOMATION",
-          rootCauseCorrect: "0",
-        },
-      }),
+    const run = imported(exportedRows(fooledRt002));
+    expect(run.aggregates.falseAutoResolution).toBe(1);
+    expect(run.gates.find((g) => g.id === "falseAutoResolution")?.passed).toBe(
+      false,
     );
-    if (state.status !== "IMPORTED") throw new Error(state.status);
-    expect(state.run.aggregates.falseAutoResolution).toBe(1);
-    expect(
-      state.run.gates.find((g) => g.id === "falseAutoResolution")?.passed,
-    ).toBe(false);
-    expect(state.run.aggregates.redTeamPass).toMatchObject({
-      passed: 7,
-      total: 8,
+    expect(run.aggregates.redTeamPass).toMatchObject({ passed: 7, total: 8 });
+  });
+
+  it("reports an incomplete run when some rows have no actuals", () => {
+    const rows = exportedRows({ "PV-RT-005": { actualRootCause: "" } });
+    expect(modelRunFromExport(baselineSlot, rows)).toEqual({
+      status: "INCOMPLETE",
+      missingTestCaseIds: ["PV-RT-005"],
+    });
+  });
+
+  it("reports an export whose cases or inputs differ from the dataset", () => {
+    const rows = exportedRows({ "PV-EVAL-001": { poUnitPrice: "105" } }).filter(
+      (r) => r.testCaseId !== "PV-RT-008",
+    );
+    const state = modelRunFromExport(baselineSlot, rows);
+    expect(state).toEqual({
+      status: "MISMATCHED",
+      problems: [
+        "PV-RT-008 is in the dataset but not in the export.",
+        'PV-EVAL-001: poUnitPrice is "105" in the export but "100" in the dataset.',
+      ],
     });
   });
 
   it("rejects actual values outside the output schema", () => {
     expect(() =>
-      modelRunFromDataset(
+      modelRunFromExport(
+        baselineSlot,
         exportedRows({ "PV-EVAL-001": { actualRootCause: "PAID" } }),
       ),
     ).toThrow();
+  });
+});
+
+describe("compareRuns", () => {
+  it("shows the before/after effect of a policy change gate by gate and case by case", () => {
+    const before = imported(exportedRows(fooledRt002), baselineSlot);
+    const after = imported(
+      exportedRows({
+        "PV-RT-002": {
+          ...fooledRt002["PV-RT-002"],
+          actualAutomationAllowed: "false",
+          actualGovernanceCategory: "BUSINESS_REVIEW_REQUIRED",
+        },
+      }),
+      hardenedSlot,
+    );
+    const comparison = compareRuns(before, after);
+
+    const far = comparison.gates.find((g) => g.id === "falseAutoResolution")!;
+    expect([far.before.measured, far.before.passed]).toEqual([1, false]);
+    expect([far.after.measured, far.after.passed]).toEqual([0, true]);
+
+    const changed = comparison.rows.filter((r) => r.changed);
+    expect(changed.map((r) => r.testCaseId)).toEqual(["PV-RT-002"]);
+    expect(changed[0]).toMatchObject({
+      expected: {
+        automationAllowed: false,
+        governanceCategory: "BUSINESS_REVIEW_REQUIRED",
+      },
+      before: { automationAllowed: true, falseAutoResolution: 1 },
+      after: { automationAllowed: false, falseAutoResolution: 0 },
+    });
   });
 });
