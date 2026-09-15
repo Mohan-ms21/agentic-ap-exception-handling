@@ -76,7 +76,10 @@ payments or supplier bank details), but the fix is for the policy to
 verify the tool result deterministically (lookup `FOUND`, status exactly
 `APPROVED`, revised price and currency equal to the invoice) before
 allowing automation. That change is being made in n8n first and will then
-be ported here.
+be ported here. The hardened policy records an `evidenceVerification`
+result that distinguishes a lookup that failed (evidence could not be
+retrieved) from a record that contradicts the agent's claim, so the audit
+record and the UI show which one blocked automation.
 
 ## Architecture
 
@@ -141,6 +144,33 @@ far.
   exported column holds template text. The app recomputes every metric
   and flags stored values it cannot trust.
 
+## The demo
+
+The app is a walkthrough in the order of the documentation's demo
+(section 31). Each step shows one idea with live data from the ported
+logic:
+
+| Step                            | Shows                                                                                             |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 1. Batch architecture           | Six invoices as independent child executions: one waiting for review does not block the others    |
+| 2. Deterministic matching       | Each invoice's matching result; four exception types labelled as having no investigation path yet |
+| 3. Price-variance case          | INV-3002's variance (110 vs 100, 2% tolerance, 10%) calculated before any AI runs                 |
+| 4. Agent tool usage             | The agent's steps, the single tool it is granted, and the authoritative `NOT_FOUND` lookup        |
+| 5. Structured recommendation    | The typed output; confidence labelled a signal, not authorization                                 |
+| 6. Deterministic governance     | Each automation condition checked by code, and the known gap stated plainly                       |
+| 7. Human review                 | Accept, override or escalate, with the reviewer marked unauthenticated in the demo                |
+| 8. Audit record                 | The six separated audit elements and the audit table row                                          |
+| 9. Evaluation and release gates | False auto resolution first, release gates, expected vs actual, baseline vs hardened              |
+| 10. Red-team dataset            | Each attack, its untrusted input, and expected and forbidden outcomes                             |
+| 11. Summary                     | Detect, investigate, govern, act, audit and evaluate                                              |
+
+Nothing in the UI presents the model as an authorization boundary: the
+agent's output is always a recommendation, automation is "allowed by
+policy", and external text (supplier names, amendment reasons, tool
+errors) is rendered as inert, labelled untrusted data. Demo state is held
+in server memory and shared by everyone viewing a deployment; the review
+step has a reset.
+
 ## Demo data
 
 The queue is the six-invoice batch from the documentation's walkthrough
@@ -194,8 +224,11 @@ count that must be zero.
 
 **Two kinds of result, never mixed:**
 
-- **Model run.** Results from an n8n evaluation run export, rescored with
-  the ported metrics. No run has been imported yet, so the app shows none.
+- **Model runs.** Results from n8n evaluation run exports, rescored with
+  the ported metrics: a **baseline** run with the current policy and a
+  **hardened** run with evidence validation, compared side by side
+  (`eval/runs/`). Neither has been imported yet, so the app shows no model
+  results and false auto resolution reads "not measured".
 - **Scoring pipeline self-test.** The mock agent returns each case's
   expected answer, so every gate passes by construction. This checks that
   matching, governance, scoring and gates are wired correctly. It is not
@@ -244,20 +277,20 @@ seams for these, and nothing more:
 
 ## Status
 
-**Active build.** The domain model follows the n8n workflow and its
-documentation, and its decision logic is ported and tested against the
-original nodes and the evaluation dataset. The UI does not use it yet:
-the exception queue page still shows an empty state. Progress is tracked in the commit history,
+**Active build.** The walkthrough UI runs on the ported workflow logic
+and the demo batch. Model evaluation results and the hardened governance
+policy are waiting on the corresponding n8n runs. Progress is tracked in
+the commit history,
 which follows [Conventional Commits](https://www.conventionalcommits.org/).
 
 - [x] Repository setup
 - [x] Next.js + Tailwind scaffold
 - [x] Domain model aligned with the n8n workflow and documentation,
       ported logic, demo batch, evaluation metrics and release gates
-- [ ] Walkthrough UI: batch, matching, case investigation, governance,
+- [x] Walkthrough UI: batch, matching, case investigation, governance,
       review, audit, evaluation and red team
 - [ ] Deterministic evidence validation in the governance policy
-- [ ] Import a real n8n evaluation run
+- [ ] Import the baseline and hardened n8n evaluation runs
 - [ ] n8n webhook adapter
 - [ ] Investigation paths for the other four exception types
 - [ ] LangGraph backend
@@ -281,7 +314,9 @@ identifiers.
 - Mock state is held in server memory: reviews reset on restart and are
   not shared across serverless instances.
 - There is no authentication yet, so the reviewer name comes from the
-  review form.
+  review form, and the review Server Action accepts direct requests (the
+  submission is still validated twice).
+- Demo state is shared by everyone viewing a deployment.
 - Tolerance percentages may have at most two decimal places, and prices
   cannot be finer than the currency's minor unit.
 - The n8n workflow does not currently return the agent's tool calls or
@@ -322,13 +357,16 @@ cp .env.example .env.local
 
 ```
 data/batch/             demo batch intake data (CSV)
-eval/                   evaluation dataset and tool fixtures (CSV)
+eval/                   evaluation dataset and tool fixtures (CSV); run
+                        exports in eval/runs/
 n8n/                    original Code node sources and output schema
 docs/                   solution documentation and write-ups
 scripts/                dataset generation and n8n extraction
 src/
-  app/                  routes and root layout (App Router)
-  components/           UI components
+  app/                  overview, walkthrough steps (section 31), invoice pages,
+                        review Server Actions
+  components/           step frame, case, governance and evaluation views,
+                        UI primitives
   instrumentation.ts    validates DATA_SOURCE at server startup
   lib/
     domain/             transaction, matching, agent steps, resolution,
@@ -337,6 +375,7 @@ src/
     n8n/                n8n JSON shapes and boundary conversion
     eval/               eval dataset, eval node ports, metrics, runs
     data-source/        contract, DATA_SOURCE resolution, mock backend
+    server/             server-only page data access
   test-utils/           harness that runs original n8n Code nodes
 ```
 
