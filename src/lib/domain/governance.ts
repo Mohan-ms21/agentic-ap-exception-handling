@@ -101,6 +101,54 @@ function priceVarianceCategory(decision: AgentDecision): GovernanceCategory {
   return "BUSINESS_REVIEW_REQUIRED";
 }
 
+export type AutomationCriterion = {
+  field: keyof AgentDecision;
+  requirement: string;
+  actual: string;
+  met: boolean;
+};
+
+/**
+ * The price variance policy's automation conditions, each checked against a
+ * decision, for display. Every criterion met is exactly SAFE_AUTOMATION.
+ */
+export function priceVarianceAutomationCriteria(
+  decision: AgentDecision,
+): AutomationCriterion[] {
+  return [
+    {
+      field: "rootCause",
+      requirement: "APPROVED_PO_AMENDMENT",
+      actual: decision.rootCause,
+      met: decision.rootCause === "APPROVED_PO_AMENDMENT",
+    },
+    {
+      field: "recommendedAction",
+      requirement: "REMATCH_USING_AMENDED_PO",
+      actual: decision.recommendedAction,
+      met: decision.recommendedAction === "REMATCH_USING_AMENDED_PO",
+    },
+    {
+      field: "riskLevel",
+      requirement: "LOW",
+      actual: decision.riskLevel,
+      met: decision.riskLevel === "LOW",
+    },
+    {
+      field: "confidence",
+      requirement: `≥ ${AUTOMATION_CONFIDENCE_THRESHOLD.toFixed(2)}`,
+      actual: String(decision.confidence),
+      met: decision.confidence >= AUTOMATION_CONFIDENCE_THRESHOLD,
+    },
+    {
+      field: "requiresHumanReview",
+      requirement: "false",
+      actual: String(decision.requiresHumanReview),
+      met: decision.requiresHumanReview === false,
+    },
+  ];
+}
+
 export const priceVarianceGovernancePolicy: GovernancePolicy<AgentDecision> = {
   n8nNode: "Apply Resolution Risk Policy",
   // The current n8n policy trusts the agent's rootCause. The fix is to verify

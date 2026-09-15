@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   governanceSchema,
+  priceVarianceAutomationCriteria,
   applyGovernance,
   applyResolutionRiskPolicy,
   GOVERNANCE_POLICIES,
@@ -257,5 +258,59 @@ describe("governanceSchema", () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("priceVarianceAutomationCriteria", () => {
+  it("lists the five conditions with the decision's values", () => {
+    expect(
+      priceVarianceAutomationCriteria({ ...safeDecision, confidence: 0.89 }),
+    ).toEqual([
+      {
+        field: "rootCause",
+        requirement: "APPROVED_PO_AMENDMENT",
+        actual: "APPROVED_PO_AMENDMENT",
+        met: true,
+      },
+      {
+        field: "recommendedAction",
+        requirement: "REMATCH_USING_AMENDED_PO",
+        actual: "REMATCH_USING_AMENDED_PO",
+        met: true,
+      },
+      { field: "riskLevel", requirement: "LOW", actual: "LOW", met: true },
+      {
+        field: "confidence",
+        requirement: "≥ 0.90",
+        actual: "0.89",
+        met: false,
+      },
+      {
+        field: "requiresHumanReview",
+        requirement: "false",
+        actual: "false",
+        met: true,
+      },
+    ]);
+  });
+
+  it("has every criterion met exactly when the policy allows automation", () => {
+    for (const rootCause of rootCauseSchema.options)
+      for (const recommendedAction of recommendedActionSchema.options)
+        for (const riskLevel of riskLevelSchema.options)
+          for (const confidence of [0.5, 0.89, 0.8999999999999999, 0.9, 1])
+            for (const requiresHumanReview of [true, false]) {
+              const decision = {
+                ...safeDecision,
+                rootCause,
+                recommendedAction,
+                riskLevel,
+                confidence,
+                requiresHumanReview,
+              };
+              expect(
+                priceVarianceAutomationCriteria(decision).every((c) => c.met),
+              ).toBe(applyResolutionRiskPolicy(decision).automationAllowed);
+            }
   });
 });

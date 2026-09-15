@@ -67,6 +67,17 @@ export const agentStepSchema = z.discriminatedUnion("outputSchemaId", [
 
 export type AgentStep = z.infer<typeof agentStepSchema>;
 
+/**
+ * Tools each agent may call (least privilege, section 24.2). The workflow,
+ * not the agent, grants these; an agent cannot call a tool not listed.
+ */
+export const AGENT_ALLOWED_TOOLS: Record<
+  string,
+  readonly ToolCall["toolName"][]
+> = {
+  "Price Variance Investigation Agent": ["Get PO Amendment"],
+};
+
 export const PRICE_VARIANCE_AGENT = {
   agentName: "Price Variance Investigation Agent",
   objective:
