@@ -4,6 +4,7 @@ import {
   AggregateMetrics,
   ReleaseGatesTable,
 } from "@/components/evaluation/release-gates";
+import { InjectionSimulation } from "@/components/evaluation/injection-simulation";
 import { RunComparisonView } from "@/components/evaluation/run-comparison";
 import { RunRowsTable } from "@/components/evaluation/run-rows";
 import { StepPage } from "@/components/step-page";
@@ -87,7 +88,8 @@ export default async function EvaluationStep({
   searchParams,
 }: PageProps<"/walkthrough/evaluation">) {
   const { run } = await searchParams;
-  const { modelRuns, selfTest } = await loadEvaluationRuns();
+  const { modelRuns, selfTest, injectionSimulation } =
+    await loadEvaluationRuns();
   const [baseline, hardened] = modelRuns;
   const bothImported =
     baseline.state.status === "IMPORTED" &&
@@ -145,6 +147,9 @@ export default async function EvaluationStep({
 
       {tab === "baseline" && <ModelRunState modelRun={baseline} />}
       {tab === "hardened" && <ModelRunState modelRun={hardened} />}
+      {tab === "compare" && (
+        <InjectionSimulation simulation={injectionSimulation} />
+      )}
       {tab === "compare" &&
         (baseline.state.status === "IMPORTED" &&
         hardened.state.status === "IMPORTED" ? (

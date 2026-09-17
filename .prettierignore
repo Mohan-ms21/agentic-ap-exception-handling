@@ -4,5 +4,6 @@ public/
 # Extracted n8n artifacts, kept exactly as scripts/extract-n8n-code-nodes.mjs writes them
 n8n/code-nodes/*.js
 n8n/schemas/*.json
+n8n/proposed/*.js
 # Solution documentation copy, kept as authored
 docs/AP_Matching_Exception_Resolution_Agent_Documentation.md

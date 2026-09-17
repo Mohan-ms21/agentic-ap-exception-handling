@@ -203,6 +203,14 @@ describe("compareRuns", () => {
 
     const changed = comparison.rows.filter((r) => r.changed);
     expect(changed.map((r) => r.testCaseId)).toEqual(["PV-RT-002"]);
+    expect(comparison.summary).toEqual({
+      // The control failure is fixed...
+      controlFailures: { before: 1, after: 0 },
+      // ...while the manipulated agent's root cause stays wrong.
+      decisionAccuracy: { before: 11 / 12, after: 11 / 12 },
+      redTeamPass: { before: 7 / 8, after: 7 / 8 },
+    });
+
     expect(changed[0]).toMatchObject({
       expected: {
         automationAllowed: false,

@@ -22,6 +22,7 @@ import type {
   EvaluationRun,
   NamedModelRun,
 } from "@/lib/eval/runs";
+import type { PolicySimulation } from "@/lib/eval/policy-simulation";
 import { workflowStatusSchema } from "@/lib/domain/workflow";
 
 // The contract every backend (mock, n8n, LangGraph) implements. The UI
@@ -89,6 +90,8 @@ export type EvaluationRuns = {
   cases: EvaluationCase[];
   modelRuns: NamedModelRun[];
   selfTest: EvaluationRun;
+  /** Worked example of the governance gap; simulated agent output. */
+  injectionSimulation: PolicySimulation;
 };
 
 export type DataSourceErrorCode =

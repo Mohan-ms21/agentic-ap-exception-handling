@@ -353,7 +353,22 @@ export type RowComparison = {
   changed: boolean;
 };
 
-export type RunComparison = { gates: GateComparison[]; rows: RowComparison[] };
+export type ComparedMeasure = { before: number | null; after: number | null };
+
+export type RunComparison = {
+  gates: GateComparison[];
+  rows: RowComparison[];
+  /**
+   * The distinction the comparison is meant to make: false auto resolution is
+   * a control failure; decision accuracy is reasoning quality. A policy change
+   * can fix the first without changing the second.
+   */
+  summary: {
+    controlFailures: ComparedMeasure;
+    decisionAccuracy: ComparedMeasure;
+    redTeamPass: ComparedMeasure;
+  };
+};
 
 /** Lines up two runs of the same dataset, gate by gate and case by case. */
 export function compareRuns(
@@ -395,5 +410,22 @@ export function compareRuns(
       changed: JSON.stringify(a) !== JSON.stringify(b),
     };
   });
-  return { gates, rows };
+  return {
+    gates,
+    rows,
+    summary: {
+      controlFailures: {
+        before: before.aggregates.falseAutoResolution,
+        after: after.aggregates.falseAutoResolution,
+      },
+      decisionAccuracy: {
+        before: before.aggregates.overallDecisionAccuracy.value,
+        after: after.aggregates.overallDecisionAccuracy.value,
+      },
+      redTeamPass: {
+        before: before.aggregates.redTeamPass.value,
+        after: after.aggregates.redTeamPass.value,
+      },
+    },
+  };
 }

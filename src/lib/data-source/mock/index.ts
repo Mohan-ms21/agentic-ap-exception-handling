@@ -22,6 +22,7 @@ import {
   type ExceptionDataSource,
 } from "../types";
 import { evaluationCases, modelRuns, selfTestRun } from "@/lib/eval/runs";
+import { injectionPolicySimulation } from "@/lib/eval/policy-simulation";
 import { demoAgentStep } from "./demo-agent";
 
 export type MockDataSourceOptions = {
@@ -79,10 +80,12 @@ export function createMockDataSource(
     },
 
     async getEvaluationRuns() {
+      const cases = evaluationCases();
       return {
-        cases: evaluationCases(),
+        cases,
         modelRuns: modelRuns(),
         selfTest: selfTestRun(),
+        injectionSimulation: injectionPolicySimulation(cases),
       };
     },
 

@@ -34,6 +34,11 @@ Each Item" node.
 A test converts the Zod schema to JSON Schema and requires it to equal
 this file.
 
+## Proposed changes (`proposed/`)
+
+Code written for the workflow but not yet applied in n8n, ported and tested
+here so the change can be shown. See [`proposed/README.md`](proposed/README.md).
+
 ## What is not here
 
 The workflow exports themselves: they contain credential names and IDs and

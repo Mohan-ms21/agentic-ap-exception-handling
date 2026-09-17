@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const CODE_NODE_DIR = join(__dirname, "../../n8n/code-nodes");
+const PROPOSED_DIR = join(__dirname, "../../n8n/proposed");
 
 export type N8nCodeNode =
   | "deterministic-matching-engine"
@@ -20,6 +21,13 @@ export type N8nCodeNode =
  *
  * Test-only: executes source from the repository, never user input.
  */
+/** Code proposed for n8n but not yet applied there (n8n/proposed). */
+export type ProposedN8nCodeNode = "apply-resolution-risk-policy-hardened";
+
+export function loadProposedN8nCodeNode(name: ProposedN8nCodeNode) {
+  return runnable(readFileSync(join(PROPOSED_DIR, `${name}.js`), "utf8"));
+}
+
 export function loadN8nCodeNode(name: N8nCodeNode) {
   const source = readFileSync(join(CODE_NODE_DIR, `${name}.js`), "utf8");
   return runnable(source);
